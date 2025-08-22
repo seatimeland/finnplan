@@ -423,6 +423,95 @@
     .input-group .btn{
       margin-bottom:10px;
     }
+
+        /* Стили для детального просмотра месяца */
+    .month{
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .month:hover{
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0,0,0,.3);
+    }
+    
+    #monthDetailModal .modal-content{
+      max-width: 600px;
+    }
+    
+    .month-detail-header{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    
+    .month-detail-title{
+      font-size: 20px;
+      font-weight: 700;
+    }
+    
+    .pie-chart-container{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 20px 0;
+      position: relative;
+    }
+    
+    #pieChart{
+      max-width: 280px;
+      max-height: 280px;
+    }
+    
+    .chart-legend{
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    
+    .legend-item{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    
+    .legend-color{
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+    }
+    
+    .detail-stats{
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+    
+    .detail-stat{
+      background: #0f1326;
+      border: 1px solid #27305a;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    
+    .detail-stat-label{
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    
+    .detail-stat-value{
+      font-size: 18px;
+      font-weight: 700;
+    }
+    
+    .overspent{
+      color: #ff4444;
+    }
+
   </style>
 </head>
 <body>
@@ -625,6 +714,62 @@
       </div>
     </div>
   </div>
+
+    <!-- Модальное окно детального просмотра месяца -->
+  <div id="monthDetailModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title" id="monthDetailTitle">Детали месяца</h3>
+        <button class="modal-close" onclick="closeMonthDetailModal()">×</button>
+      </div>
+      
+      <div class="pie-chart-container">
+        <canvas id="pieChart" width="280" height="280"></canvas>
+      </div>
+      
+      <div class="chart-legend">
+        <div class="legend-item">
+          <div class="legend-color" style="background: #4ade80;"></div>
+          <span>Доступно для трат</span>
+          <span id="legendAvailable" style="margin-left:auto; font-weight:600;">—</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: #ff8a8a;"></div>
+          <span>Потрачено (в пределах плана)</span>
+          <span id="legendSpent" style="margin-left:auto; font-weight:600;">—</span>
+        </div>
+        <div class="legend-item" id="overspentLegend" style="display:none;">
+          <div class="legend-color" style="background: #ff4444;"></div>
+          <span>Перерасход</span>
+          <span id="legendOverspent" style="margin-left:auto; font-weight:600; color:#ff4444;">—</span>
+        </div>
+      </div>
+      
+      <div class="detail-stats">
+        <div class="detail-stat">
+          <div class="detail-stat-label">План на месяц</div>
+          <div class="detail-stat-value" id="detailPlan">—</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Обязательные платежи</div>
+          <div class="detail-stat-value" id="detailMandatory">—</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Фактически потрачено</div>
+          <div class="detail-stat-value" id="detailActual">—</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Остаток/Перерасход</div>
+          <div class="detail-stat-value" id="detailBalance">—</div>
+        </div>
+      </div>
+      
+      <div class="actions" style="margin-top: 20px;">
+        <button class="btn ghost" onclick="closeMonthDetailModal()">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
 
   <script>
     // ===========================
@@ -966,7 +1111,7 @@
       $unfeasibleMsg.classList.toggle('hidden', !showUnfeasible);
     }
 
-    function renderMonthsList(baseMonthlyLimit, currentLimit){
+        function renderMonthsList(baseMonthlyLimit, currentLimit){
       $monthsList.innerHTML = '';
       if(state.months <= 0) return;
 
@@ -979,6 +1124,9 @@
 
         const monthDiv = document.createElement('div');
         monthDiv.className = 'month' + (isCurrent ? ' current' : '');
+        
+        // Добавляем обработчик клика для открытия детального просмотра
+        monthDiv.onclick = () => openMonthDetailModal(idx, label, baseMonthlyLimit, monthTotal, mandatoryForMonth);
 
         // Header
         const header = document.createElement('div');
@@ -998,7 +1146,10 @@
         addBtn.className = 'btn accent icon small';
         addBtn.innerHTML = '+';
         addBtn.title = 'Добавить расход';
-        addBtn.onclick = () => openAddExpenseModal(idx, label);
+        addBtn.onclick = (e) => {
+          e.stopPropagation(); // Предотвращаем открытие детального просмотра
+          openAddExpenseModal(idx, label);
+        };
 
         header.appendChild(nameDiv);
         header.appendChild(addBtn);
@@ -1063,7 +1214,10 @@
             delBtn.className = 'btn ghost small';
             delBtn.textContent = '×';
             delBtn.style.padding = '2px 8px';
-            delBtn.onclick = () => deleteTransaction(idx, tIdx);
+            delBtn.onclick = (e) => {
+              e.stopPropagation(); // Предотвращаем открытие детального просмотра
+              deleteTransaction(idx, tIdx);
+            };
             
             rightDiv.appendChild(amountSpan);
             rightDiv.appendChild(delBtn);
@@ -1079,6 +1233,7 @@
         $monthsList.appendChild(monthDiv);
       });
     }
+
 
     function createStatItem(label, value){
       const div = document.createElement('div');
@@ -1180,6 +1335,130 @@
         recalcAll();
       }
     }
+
+        // ===========================
+    // ДЕТАЛЬНЫЙ ПРОСМОТР МЕСЯЦА
+    // ===========================
+    function openMonthDetailModal(monthIndex, monthLabel, plannedAmount, actualSpent, mandatoryAmount){
+      document.getElementById('monthDetailTitle').textContent = 'Детали: ' + monthLabel;
+      
+      // Расчёты
+      const available = Math.max(0, plannedAmount - actualSpent);
+      const spentInPlan = Math.min(actualSpent, plannedAmount);
+      const overspent = Math.max(0, actualSpent - plannedAmount);
+      const balance = plannedAmount - actualSpent;
+      
+      // Обновляем статистику
+      document.getElementById('detailPlan').textContent = fmt0(plannedAmount);
+      document.getElementById('detailMandatory').textContent = fmt0(mandatoryAmount);
+      document.getElementById('detailActual').textContent = fmt0(actualSpent);
+      
+      const balanceEl = document.getElementById('detailBalance');
+      balanceEl.textContent = fmt0(Math.abs(balance));
+      balanceEl.className = 'detail-stat-value';
+      if(balance < 0){
+        balanceEl.classList.add('overspent');
+        balanceEl.textContent = '−' + fmt0(Math.abs(balance));
+      } else {
+        balanceEl.textContent = '+' + fmt0(balance);
+      }
+      
+      // Обновляем легенду
+      document.getElementById('legendAvailable').textContent = fmt0(available);
+      document.getElementById('legendSpent').textContent = fmt0(spentInPlan);
+      
+      const overspentLegend = document.getElementById('overspentLegend');
+      if(overspent > 0){
+        overspentLegend.style.display = 'flex';
+        document.getElementById('legendOverspent').textContent = fmt0(overspent);
+      } else {
+        overspentLegend.style.display = 'none';
+      }
+      
+      // Рисуем круговую диаграмму
+      drawPieChart(plannedAmount, actualSpent);
+      
+      // Показываем модальное окно
+      document.getElementById('monthDetailModal').classList.add('show');
+    }
+    
+    function closeMonthDetailModal(){
+      document.getElementById('monthDetailModal').classList.remove('show');
+    }
+    
+    function drawPieChart(planned, spent){
+      const canvas = document.getElementById('pieChart');
+      const ctx = canvas.getContext('2d');
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = 100;
+      
+      // Очищаем canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Вычисляем углы
+      const total = Math.max(planned, spent);
+      if(total <= 0) return;
+      
+      const spentInPlan = Math.min(spent, planned);
+      const overspent = Math.max(0, spent - planned);
+      const available = Math.max(0, planned - spent);
+      
+      // Начальный угол (сверху)
+      let currentAngle = -Math.PI / 2;
+      
+      // Рисуем доступную часть (зелёный)
+      if(available > 0){
+        const availableAngle = (available / total) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + availableAngle);
+        ctx.lineTo(centerX, centerY);
+        ctx.fillStyle = '#4ade80';
+        ctx.fill();
+        currentAngle += availableAngle;
+      }
+      
+      // Рисуем потраченную в пределах плана часть (красный)
+      if(spentInPlan > 0){
+        const spentAngle = (spentInPlan / total) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + spentAngle);
+        ctx.lineTo(centerX, centerY);
+        ctx.fillStyle = '#ff8a8a';
+        ctx.fill();
+        currentAngle += spentAngle;
+      }
+      
+      // Рисуем перерасход (алый)
+      if(overspent > 0){
+        const overspentAngle = (overspent / total) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + overspentAngle);
+        ctx.lineTo(centerX, centerY);
+        ctx.fillStyle = '#ff4444';
+        ctx.fill();
+      }
+      
+      // Рисуем белую обводку
+      ctx.strokeStyle = '#27305a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // Добавляем текст в центре
+      ctx.fillStyle = '#e8ecff';
+      ctx.font = 'bold 14px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      const percentage = planned > 0 ? Math.round((spent / planned) * 100) : 0;
+      ctx.fillText(percentage + '%', centerX, centerY - 10);
+      ctx.font = '12px Inter, system-ui, sans-serif';
+      ctx.fillStyle = '#8e97b3';
+      ctx.fillText('использовано', centerX, centerY + 10);
+    }
+
 
     function deleteTransaction(monthIndex, transactionIndex){
       if(confirm('Удалить эту трату?')){
@@ -1369,11 +1648,20 @@
       }
     });
 
+        document.getElementById('monthDetailModal').addEventListener('click', (e) => {
+      if(e.target.id === 'monthDetailModal'){
+        closeMonthDetailModal();
+      }
+    });
+
+
     // Закрытие по Escape
+        // Закрытие по Escape
     document.addEventListener('keydown', (e) => {
       if(e.key === 'Escape'){
         closeModal();
         closeMandatoryModal();
+        closeMonthDetailModal();
       }
     });
 
@@ -1412,3 +1700,4 @@
   </script>
 </body>
 </html>
+
