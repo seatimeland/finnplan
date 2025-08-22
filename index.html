@@ -19,6 +19,7 @@
       --line3:#4ade80;
       --grid:#2a3050;
       --purple:#a78bfa;
+      --mandatory:#ff6b6b;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -61,6 +62,11 @@
     .row{
       display:grid;
       grid-template-columns: 1fr 1fr;
+      gap:12px;
+    }
+    .row-3{
+      display:grid;
+      grid-template-columns: 2fr 1fr 1fr;
       gap:12px;
     }
     .field{
@@ -108,6 +114,9 @@
     .btn.accent{
       background:linear-gradient(180deg, var(--accent), var(--accent2));
       color:#0f1220;
+    }
+    .btn.danger{
+      background:linear-gradient(180deg, #ef4444, #dc2626);
     }
     .btn.small{
       padding:6px 10px;
@@ -185,7 +194,7 @@
     }
     .month-stats{
       display:grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap:8px;
       margin-bottom:10px;
     }
@@ -234,6 +243,38 @@
       color:var(--muted);
       font-size:11px;
     }
+    .mandatory-list{
+      margin-top:10px;
+      max-height:300px;
+      overflow-y:auto;
+    }
+    .mandatory-item{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:10px;
+      background:#0f1326;
+      border:1px solid #27305a;
+      border-radius:10px;
+      margin-bottom:8px;
+    }
+    .mandatory-info{
+      flex:1;
+    }
+    .mandatory-name{
+      font-weight:600;
+      margin-bottom:2px;
+    }
+    .mandatory-details{
+      font-size:12px;
+      color:var(--muted);
+    }
+    .mandatory-amount{
+      font-size:16px;
+      font-weight:700;
+      color:var(--mandatory);
+      margin:0 12px;
+    }
     .pill{
       display:inline-flex; align-items:center; gap:8px;
       border:1px solid #27305a; padding:6px 10px; border-radius:999px; 
@@ -243,6 +284,11 @@
       background:rgba(109,211,251,.1);
       border-color:var(--accent);
       color:var(--accent);
+    }
+    .pill.mandatory{
+      background:rgba(255,107,107,.1);
+      border-color:var(--mandatory);
+      color:var(--mandatory);
     }
     .legend{display:flex; gap:10px; flex-wrap:wrap; margin:8px 0 0}
     .dot{width:10px;height:10px;border-radius:50%}
@@ -280,8 +326,10 @@
       border:1px solid #27305a;
       border-radius:16px;
       padding:24px;
-      max-width:400px;
+      max-width:450px;
       width:100%;
+      max-height:90vh;
+      overflow-y:auto;
       box-shadow: 0 20px 60px rgba(0,0,0,.5);
     }
     .modal-header{
@@ -360,7 +408,7 @@
 <body>
   <div id="app">
     <h1>Финансовый Планер</h1>
-    <div class="sub">Наведи порядок в тратах и уверенно двигайся к цели. Заполни поля, сохрани фактические расходы по месяцам и смотри, как меняется доступный лимит.</div>
+    <div class="sub">Наведи порядок в тратах и уверенно двигайся к цели. Управляй обязательными платежами с учётом дня оплаты и отслеживай фактические расходы.</div>
 
     <div class="grid">
       <!-- ВВОД ДАННЫХ -->
@@ -372,15 +420,9 @@
           <input id="initial" type="number" inputmode="decimal" min="0" step="100" placeholder="например, 100000" />
         </div>
 
-        <div class="row">
-          <div class="field">
-            <label for="mandatory">Обязательные платежи в месяц, ₽ <span class="small">(необязательно)</span></label>
-            <input id="mandatory" type="number" inputmode="decimal" min="0" step="100" placeholder="например, 20000" />
-          </div>
-          <div class="field">
-            <label for="target">Целевой баланс к концу периода, ₽</label>
-            <input id="target" type="number" inputmode="decimal" min="0" step="100" placeholder="например, 50000" />
-          </div>
+        <div class="field">
+          <label for="target">Целевой баланс к концу периода, ₽</label>
+          <input id="target" type="number" inputmode="decimal" min="0" step="100" placeholder="например, 50000" />
         </div>
 
         <div class="row">
@@ -394,12 +436,22 @@
           </div>
         </div>
 
+        <div class="divider"></div>
+
+        <h3 style="font-size:16px;margin:0 0 10px;">Обязательные платежи</h3>
+        <div class="note" style="margin-bottom:10px;">Добавьте регулярные платежи с указанием дня месяца. Платежи учитываются только если день оплаты попадает в период планирования.</div>
+        
+        <div id="mandatoryPaymentsList" class="mandatory-list"></div>
+        
+        <button id="addMandatoryBtn" class="btn accent small" style="width:100%;">+ Добавить обязательный платёж</button>
+
+        <div class="divider"></div>
+
         <div class="actions">
           <button id="calcBtn" class="btn">Рассчитать</button>
-          <button id="resetBtn" class="btn ghost">Сбросить</button>
+          <button id="resetBtn" class="btn ghost">Сбросить всё</button>
           <span class="pill" id="monthsInfo">Месяцев: —</span>
         </div>
-        <div class="note">Количество месяцев считается по датам. Частичный месяц округляется в большую сторону.</div>
       </section>
 
       <!-- РЕЗУЛЬТАТЫ И ГРАФИК -->
@@ -422,6 +474,7 @@
           <div class="tile">
             <div class="label">Обязательные платежи за период</div>
             <div class="value" id="mandatoryTotal">—</div>
+            <div class="small" id="mandatoryCount">—</div>
           </div>
 
           <div class="tile" id="feasibilityTile">
@@ -465,7 +518,7 @@
     <!-- ФАКТИЧЕСКИЕ ТРАТЫ -->
     <section id="actual-spending-section">
       <h2>Фактические траты по месяцам</h2>
-      <div class="note">Добавляй расходы через кнопку "+" для каждого месяца. Можно добавить несколько трат в один месяц.</div>
+      <div class="note">Добавляй расходы через кнопку "+" для каждого месяца. Обязательные платежи отображаются автоматически.</div>
       
       <div id="monthsList" class="months"></div>
 
@@ -505,7 +558,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3 class="modal-title">Добавить расход</h3>
-        <button class="modal-close" onclick="closeModal()">×</button>
+        <button class="modal-close" onclick="closeExpenseModal()">×</button>
       </div>
       <div class="field">
         <label>Месяц</label>
@@ -521,7 +574,34 @@
       </div>
       <div class="actions">
         <button class="btn accent" onclick="saveExpense()">Добавить</button>
-        <button class="btn ghost" onclick="closeModal()">Отмена</button>
+        <button class="btn ghost" onclick="closeExpenseModal()">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно для добавления обязательного платежа -->
+  <div id="addMandatoryModal" class="modal">
+    modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Добавить обязательный платёж</h3>
+        <button class="modal-close" onclick="closeMandatoryModal()">×</button>
+      </div>
+      <div class="field">
+        <label for="mandatoryName">Название платежа</label>
+        <input type="text" id="mandatoryName" placeholder="например, Ипотека">
+      </div>
+      <div class="field">
+        <label for="mandatoryAmount">Сумма платежа, ₽</label>
+        <input type="number" id="mandatoryAmount" inputmode="decimal" min="0" step="100" placeholder="например, 30000">
+      </div>
+      <div class="field">
+        <label for="mandatoryDay">День месяца для оплаты (1-31)</label>
+        <input type="number" id="mandatoryDay" min="1" max="31" placeholder="например, 5">
+        <div class="note">Платёж будет учитываться только в те месяцы, где указанный день попадает в период планирования</div>
+      </div>
+      <div class="actions">
+        <button class="btn accent" onclick="saveMandatory()">Добавить</button>
+        <button class="btn ghost" onclick="closeMandatoryModal()">Отмена</button>
       </div>
     </div>
   </div>
@@ -573,23 +653,85 @@
       return now.getFullYear() === monthDate.getFullYear() && now.getMonth() === monthDate.getMonth();
     }
 
+    // Проверка, попадает ли платёж в указанный месяц
+    function isMandatoryInMonth(mandatory, monthIndex){
+      if(!state.start || !state.end) return false;
+      
+      const monthDate = new Date(state.start.getFullYear(), state.start.getMonth() + monthIndex, mandatory.day);
+      
+      // Проверяем, что день существует в этом месяце
+      if(monthDate.getDate() !== mandatory.day) {
+        // День не существует в этом месяце (например, 31 февраля)
+        return false;
+      }
+      
+      // Проверяем, попадает ли дата платежа в период планирования
+      const startDay = state.start.getDate();
+      const endDay = state.end.getDate();
+      
+      // Для первого месяца: платёж учитывается, если день >= начального дня периода
+      if(monthIndex === 0){
+        return mandatory.day >= startDay;
+      }
+      
+      // Для последнего месяца: платёж учитывается, если день <= конечного дня периода
+      if(monthIndex === state.months - 1){
+        return mandatory.day <= endDay;
+      }
+      
+      // Для остальных месяцев платёж всегда учитывается
+      return true;
+    }
+
+    // Подсчёт общей суммы обязательных платежей за период
+    function calculateTotalMandatory(){
+      let total = 0;
+      let count = 0;
+      
+      for(let payment of state.mandatoryPayments){
+        for(let i = 0; i < state.months; i++){
+          if(isMandatoryInMonth(payment, i)){
+            total += payment.amount;
+            count++;
+          }
+        }
+      }
+      
+      return { total, count };
+    }
+
+    // Получение обязательных платежей для конкретного месяца
+    function getMandatoryForMonth(monthIndex){
+      let total = 0;
+      const payments = [];
+      
+      for(let payment of state.mandatoryPayments){
+        if(isMandatoryInMonth(payment, monthIndex)){
+          total += payment.amount;
+          payments.push(payment);
+        }
+      }
+      
+      return { total, payments };
+    }
+
     // ===========================
     // СОСТОЯНИЕ ПРИЛОЖЕНИЯ
     // ===========================
     const state = {
       initial: 0,
-      mandatory: 0,
       target: 0,
       start: null,
       end: null,
       months: 0,
+      mandatoryPayments: [], // Массив обязательных платежей [{name, amount, day}]
       monthlyTransactions: [], // Массив массивов транзакций по месяцам
       labels: [],
       currentModalMonth: -1
     };
 
     // Локальное хранилище
-    const STORAGE_KEY = 'finplanner_state_v2';
+    const STORAGE_KEY = 'finplanner_state_v3';
     function saveState(){
       try{
         const payload = {
@@ -607,11 +749,11 @@
         if(!raw) return;
         const obj = JSON.parse(raw);
         state.initial = obj.initial ?? 0;
-        state.mandatory = obj.mandatory ?? 0;
         state.target = obj.target ?? 0;
         state.start = obj.start ? new Date(obj.start) : null;
         state.end = obj.end ? new Date(obj.end) : null;
         state.months = obj.months ?? 0;
+        state.mandatoryPayments = obj.mandatoryPayments ?? [];
         state.monthlyTransactions = obj.monthlyTransactions ?? [];
         state.labels = obj.labels ?? [];
       }catch(e){}
@@ -621,16 +763,17 @@
     // DOM ЭЛЕМЕНТЫ
     // ===========================
     const $initial = document.getElementById('initial');
-    const $mandatory = document.getElementById('mandatory');
     const $target = document.getElementById('target');
     const $start = document.getElementById('start');
     const $end = document.getElementById('end');
     const $calcBtn = document.getElementById('calcBtn');
     const $resetBtn = document.getElementById('resetBtn');
+    const $addMandatoryBtn = document.getElementById('addMandatoryBtn');
     const $monthsInfo = document.getElementById('monthsInfo');
     const $availableTotal = document.getElementById('availableTotal');
     const $monthlyLimit = document.getElementById('monthlyLimit');
     const $mandatoryTotal = document.getElementById('mandatoryTotal');
+    const $mandatoryCount = document.getElementById('mandatoryCount');
     const $feasibility = document.getElementById('feasibility');
     const $limitTile = document.getElementById('limitTile');
     const $feasibilityTile = document.getElementById('feasibilityTile');
@@ -645,6 +788,7 @@
     const $dailyLimit = document.getElementById('dailyLimit');
     const $weeklyLimit = document.getElementById('weeklyLimit');
     const $tenDaysLimit = document.getElementById('tenDaysLimit');
+    const $mandatoryPaymentsList = document.getElementById('mandatoryPaymentsList');
     const $chart = document.getElementById('chart');
     const ctx = $chart.getContext('2d');
 
@@ -653,7 +797,6 @@
     // ===========================
     function recalcAll(){
       state.initial = Math.max(0, num($initial));
-      state.mandatory = Math.max(0, num($mandatory));
       state.target = Math.max(0, num($target));
       state.start = $start.value ? new Date($start.value) : null;
       state.end = $end.value ? new Date($end.value) : null;
@@ -663,7 +806,7 @@
       if(state.months <= 0 || !state.start || !state.end){
         state.labels = [];
         state.monthlyTransactions = [];
-        renderResults({availableTotal:null, monthlyLimit:null, mandatoryTotal:null, feasible:null, newMonthlyLimit:null, remTotal:null, sumActual:null, countSaved:null});
+        renderResults({availableTotal:null, monthlyLimit:null, mandatoryTotal:null, mandatoryCount:0, feasible:null, newMonthlyLimit:null, remTotal:null, sumActual:null, countSaved:null});
         $monthsList.innerHTML = '';
         drawChart([], [], [], []);
         $recommendationsBlock.classList.add('hidden');
@@ -681,8 +824,11 @@
         state.monthlyTransactions = next;
       }
 
+      // Расчёт обязательных платежей с учётом дней
+      const mandatoryInfo = calculateTotalMandatory();
+      
       // Расчёты
-      const availableTotal = (state.initial - state.target) - (state.mandatory * state.months);
+      const availableTotal = (state.initial - state.target) - mandatoryInfo.total;
       const monthlyLimit = availableTotal / state.months;
       
       // Подсчёт фактических трат
@@ -700,7 +846,8 @@
       renderResults({
         availableTotal,
         monthlyLimit,
-        mandatoryTotal: state.mandatory * state.months,
+        mandatoryTotal: mandatoryInfo.total,
+        mandatoryCount: mandatoryInfo.count,
         feasible,
         newMonthlyLimit,
         remTotal,
@@ -710,11 +857,12 @@
 
       renderMonthsList(monthlyLimit, newMonthlyLimit);
       renderRecommendations(newMonthlyLimit);
+      renderMandatoryPayments();
 
       // График
       const plannedBalances = makePlannedBalances(state.initial, state.target, state.months);
       const { actualBalances, forecastBalances } = makeActualAndForecastBalances(
-        plannedBalances, state.initial, state.mandatory, monthlyActuals, newMonthlyLimit
+        plannedBalances, state.initial, monthlyActuals, newMonthlyLimit
       );
       drawChart(state.labels, plannedBalances, actualBalances, forecastBalances);
 
@@ -746,32 +894,37 @@
       return arr;
     }
 
-    function makeActualAndForecastBalances(planned, initial, mandatory, monthlyActuals, newMonthlyLimit){
-  const actual = [initial];
-  let savedCount = 0;
-  
-  // Проходим по всем месяцам с фактическими тратами
-  for(let i=0;i<monthlyActuals.length;i++){
-    const v = monthlyActuals[i];
-    if(v > 0){
-      const prev = actual[actual.length-1];
-      actual.push(prev - mandatory - v);
-      savedCount++;
-    }
-    else {
-      break;
-    }
-  }
-  
-  // Строим прогноз на оставшиеся месяцы
-  const forecast = [];
+    function makeActualAndForecastBalances(planned, initial, monthlyActuals, newMonthlyLimit){
+      const actual = [initial];
+      let savedCount = 0;
+      
+      // Проходим по всем месяцам с фактическими тратами
+      for(let i=0;i<monthlyActuals.length;i++){
+        const v = monthlyActuals[i];
+        const mandatoryForMonth = getMandatoryForMonth(i);
+        
+        if(v > 0){
+          const prev = actual[actual.length-1];
+          actual.push(prev - mandatoryForMonth.total - v);
+          savedCount++;
+        }
+        else {
+          break;
+        }
+      }
+      
+      // Строим прогноз на оставшиеся месяцы
+      const forecast = [];
       const totalPoints = planned.length;
       if(savedCount < monthlyActuals.length){
         const startY = actual[actual.length-1];
         forecast.push(startY);
         const remainingSteps = (totalPoints-1) - savedCount;
-        const monthlyTotalSpend = mandatory + (Number.isFinite(newMonthlyLimit) ? newMonthlyLimit : 0);
+        
         for(let i=1;i<=remainingSteps;i++){
+          const monthIndex = savedCount + i - 1;
+          const mandatoryForMonth = monthIndex < state.months ? getMandatoryForMonth(monthIndex).total : 0;
+          const monthlyTotalSpend = mandatoryForMonth + (Number.isFinite(newMonthlyLimit) ? newMonthlyLimit : 0);
           forecast.push(forecast[i-1] - monthlyTotalSpend);
         }
       }
@@ -780,13 +933,14 @@
 
     function renderResults(data){
       const {
-        availableTotal, monthlyLimit, mandatoryTotal,
+        availableTotal, monthlyLimit, mandatoryTotal, mandatoryCount,
         feasible, newMonthlyLimit, remTotal, sumActual, countSaved
       } = data;
 
       $availableTotal.textContent = fmt0(availableTotal);
       $monthlyLimit.textContent = Number.isFinite(monthlyLimit) ? fmt0(monthlyLimit) : '—';
       $mandatoryTotal.textContent = fmt0(mandatoryTotal);
+      $mandatoryCount.textContent = `${mandatoryCount} платежей`;
       $feasibility.textContent = feasible===null ? '—' : (feasible ? 'Выполним ✓' : 'Невыполним ✗');
       $feasibilityTile.classList.toggle('warn', feasible===false);
       $feasibilityTile.classList.toggle('ok', feasible===true);
@@ -804,6 +958,41 @@
       $unfeasibleMsg.classList.toggle('hidden', !showUnfeasible);
     }
 
+    function renderMandatoryPayments(){
+      $mandatoryPaymentsList.innerHTML = '';
+      
+      if(state.mandatoryPayments.length === 0){
+        $mandatoryPaymentsList.innerHTML = '<div class="note">Нет обязательных платежей</div>';
+        return;
+      }
+      
+      state.mandatoryPayments.forEach((payment, idx) => {
+        const item = document.createElement('div');
+        item.className = 'mandatory-item';
+        
+        const info = document.createElement('div');
+        info.className = 'mandatory-info';
+        info.innerHTML = `
+          <div class="mandatory-name">${payment.name}</div>
+          <div class="mandatory-details">Оплата: ${payment.day} числа каждого месяца</div>
+        `;
+        
+        const amount = document.createElement('div');
+        amount.className = 'mandatory-amount';
+        amount.textContent = fmt0(payment.amount);
+        
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn danger small';
+        delBtn.textContent = 'Удалить';
+        delBtn.onclick = () => deleteMandatory(idx);
+        
+        item.appendChild(info);
+        item.appendChild(amount);
+        item.appendChild(delBtn);
+        $mandatoryPaymentsList.appendChild(item);
+      });
+    }
+
     function renderMonthsList(baseMonthlyLimit, currentLimit){
       $monthsList.innerHTML = '';
       if(state.months <= 0) return;
@@ -811,6 +1000,7 @@
       state.labels.forEach((label, idx) => {
         const transactions = state.monthlyTransactions[idx] || [];
         const monthTotal = transactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+        const mandatoryForMonth = getMandatoryForMonth(idx);
         const hasTransactions = transactions.length > 0;
         const isCurrent = isCurrentMonth(idx);
 
@@ -845,15 +1035,34 @@
         stats.className = 'month-stats';
 
         const statPlanned = createStatItem('План (дискретно)', fmt0(baseMonthlyLimit));
+        const statMandatory = createStatItem('Обязательные', fmt0(mandatoryForMonth.total));
         const statActual = createStatItem('Потрачено', fmt0(monthTotal));
         const statRemaining = createStatItem('Остаток', fmt0(Math.max(0, baseMonthlyLimit - monthTotal)));
 
         stats.appendChild(statPlanned);
+        stats.appendChild(statMandatory);
         stats.appendChild(statActual);
         stats.appendChild(statRemaining);
 
         monthDiv.appendChild(header);
         monthDiv.appendChild(stats);
+
+        // Обязательные платежи для месяца
+        if(mandatoryForMonth.payments.length > 0){
+          const mandatoryDiv = document.createElement('div');
+          mandatoryDiv.style.marginTop = '10px';
+          mandatoryDiv.innerHTML = '<div class="small" style="margin-bottom:4px;">Обязательные платежи:</div>';
+          
+          mandatoryForMonth.payments.forEach(payment => {
+            const pill = document.createElement('span');
+            pill.className = 'pill mandatory';
+            pill.style.marginRight = '4px';
+            pill.textContent = `${payment.name}: ${fmt0(payment.amount)}`;
+            mandatoryDiv.appendChild(pill);
+          });
+          
+          monthDiv.appendChild(mandatoryDiv);
+        }
 
         // Transactions list
         if(hasTransactions){
@@ -911,7 +1120,7 @@
     }
 
     // ===========================
-    // МОДАЛЬНОЕ ОКНО
+    // МОДАЛЬНЫЕ ОКНА
     // ===========================
     function openAddExpenseModal(monthIndex, monthLabel){
       state.currentModalMonth = monthIndex;
@@ -922,7 +1131,7 @@
       document.getElementById('expenseAmount').focus();
     }
 
-    function closeModal(){
+    function closeExpenseModal(){
       document.getElementById('addExpenseModal').classList.remove('show');
       state.currentModalMonth = -1;
     }
@@ -947,7 +1156,7 @@
           date: new Date().toISOString()
         });
         
-        closeModal();
+        closeExpenseModal();
         recalcAll();
       }
     }
@@ -955,6 +1164,50 @@
     function deleteTransaction(monthIndex, transactionIndex){
       if(confirm('Удалить эту трату?')){
         state.monthlyTransactions[monthIndex].splice(transactionIndex, 1);
+        recalcAll();
+      }
+    }
+
+    function openMandatoryModal(){
+      document.getElementById('mandatoryName').value = '';
+      document.getElementById('mandatoryAmount').value = '';
+      document.getElementById('mandatoryDay').value = '';
+      document.getElementById('addMandatoryModal').classList.add('show');
+      document.getElementById('mandatoryName').focus();
+    }
+
+    function closeMandatoryModal(){
+      document.getElementById('addMandatoryModal').classList.remove('show');
+    }
+
+    function saveMandatory(){
+      const name = document.getElementById('mandatoryName').value.trim();
+      const amount = parseFloat(document.getElementById('mandatoryAmount').value.replace(',', '.'));
+      const day = parseInt(document.getElementById('mandatoryDay').value);
+      
+      if(!name){
+        document.getElementById('mandatoryName').focus();
+        return;
+      }
+      
+      if(!Number.isFinite(amount) || amount <= 0){
+        document.getElementById('mandatoryAmount').focus();
+        return;
+      }
+      
+      if(!Number.isInteger(day) || day < 1 || day > 31){
+        document.getElementById('mandatoryDay').focus();
+        return;
+      }
+      
+      state.mandatoryPayments.push({ name, amount, day });
+      closeMandatoryModal();
+      recalcAll();
+    }
+
+    function deleteMandatory(index){
+      if(confirm(`Удалить платёж "${state.mandatoryPayments[index].name}"?`)){
+        state.mandatoryPayments.splice(index, 1);
         recalcAll();
       }
     }
@@ -1041,7 +1294,7 @@
         ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line3').trim();
         ctx.beginPath();
         const totalPoints = (planned?.length||1)-1;
-        const startIndex = (actual?.length||1)-1;
+        const startIndex = (actual
         for(let i=0;i<forecast.length;i++){
           const x = X(startIndex + i, totalPoints);
           const y = Y(forecast[i]);
@@ -1111,34 +1364,45 @@
     // ОБРАБОТЧИКИ
     // ===========================
     $calcBtn.addEventListener('click', recalcAll);
+    
     $resetBtn.addEventListener('click', () => {
-      $initial.value = '';
-      $mandatory.value = '';
-      $target.value = '';
-      $start.value = '';
-      $end.value = '';
-      Object.assign(state, {
-        initial:0, mandatory:0, target:0, start:null, end:null, 
-        months:0, monthlyTransactions:[], labels:[]
-      });
-      localStorage.removeItem(STORAGE_KEY);
-      recalcAll();
+      if(confirm('Удалить все данные и начать заново?')){
+        $initial.value = '';
+        $target.value = '';
+        $start.value = '';
+        $end.value = '';
+        Object.assign(state, {
+          initial:0, target:0, start:null, end:null, 
+          months:0, mandatoryPayments:[], monthlyTransactions:[], labels:[]
+        });
+        localStorage.removeItem(STORAGE_KEY);
+        recalcAll();
+      }
     });
+
+    $addMandatoryBtn.addEventListener('click', openMandatoryModal);
 
     $start.addEventListener('change', recalcAll);
     $end.addEventListener('change', recalcAll);
 
-    // Закрытие модального окна по клику вне его
+    // Закрытие модальных окон по клику вне их
     document.getElementById('addExpenseModal').addEventListener('click', (e) => {
       if(e.target.id === 'addExpenseModal'){
-        closeModal();
+        closeExpenseModal();
+      }
+    });
+
+    document.getElementById('addMandatoryModal').addEventListener('click', (e) => {
+      if(e.target.id === 'addMandatoryModal'){
+        closeMandatoryModal();
       }
     });
 
     // Закрытие по Escape
     document.addEventListener('keydown', (e) => {
       if(e.key === 'Escape'){
-        closeModal();
+        closeExpenseModal();
+        closeMandatoryModal();
       }
     });
 
@@ -1149,7 +1413,6 @@
       loadState();
       
       if(state.initial) $initial.value = String(state.initial);
-      if(state.mandatory) $mandatory.value = String(state.mandatory);
       if(state.target) $target.value = String(state.target);
       if(state.start) $start.valueAsDate = state.start;
       if(state.end) $end.valueAsDate = state.end;
@@ -1159,11 +1422,18 @@
       // Демо-данные если пусто
       if(!state.start && !state.end && !$initial.value && !$target.value){
         $initial.value = '150000';
-        $mandatory.value = '25000';
         $target.value = '30000';
+        
+        // Демо обязательные платежи
+        state.mandatoryPayments = [
+          { name: 'Ипотека', amount: 25000, day: 5 },
+          { name: 'Интернет', amount: 600, day: 1 },
+          { name: 'Мобильная связь', amount: 500, day: 15 }
+        ];
+        
         const today = new Date();
-        const start = new Date(today.getFullYear(), today.getMonth(), 1);
-        const end = new Date(today.getFullYear(), today.getMonth() + 3, 0);
+        const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const end = new Date(today.getFullYear(), today.getMonth() + 3, today.getDate());
         $start.valueAsDate = start;
         $end.valueAsDate = end;
         recalcAll();
