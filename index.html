@@ -896,6 +896,67 @@
       return total;
     }
 
+    function calculateTotalMandatory(){
+      let total = 0;
+      for(let i = 0; i < state.months; i++){
+        total += calculateMandatoryForMonth(i);
+      }
+      return total;
+    }
+
+     // ===========================
+    // РАСЧЕТ ДИНАМИЧЕСКИХ ЛИМИТОВ
+    // ===========================
+    function calculateDynamicLimitForMonth(monthIndex, baseMonthlyLimit, monthlyActuals){
+      // Для первого месяца возвращаем базовый лимит если в нем еще нет трат
+      if(monthIndex === 0 && monthlyActuals[0] === 0){
+        return baseMonthlyLimit;
+      }
+      
+      // Находим последний месяц с тратами
+      let lastMonthWithExpenses = -1;
+      for(let i = 0; i < monthlyActuals.length; i++){
+        if(monthlyActuals[i] > 0){
+          lastMonthWithExpenses = i;
+        }
+      }
+      
+      // Если текущий месяц уже имеет траты или это прошедший месяц - показываем базовый план
+      if(monthIndex <= lastMonthWithExpenses){
+        return baseMonthlyLimit;
+      }
+      
+      // Для будущих месяцев пересчитываем план
+      // Считаем сколько уже потрачено (включая обязательные)
+      let totalSpentSoFar = 0;
+      for(let i = 0; i <= lastMonthWithExpenses; i++){
+        totalSpentSoFar += monthlyActuals[i] + calculateMandatoryForMonth(i);
+      }
+      
+      // Считаем сколько осталось обязательных платежей в будущих месяцах
+      let futureMandatory = 0;
+      for(let i = lastMonthWithExpenses + 1; i < state.months; i++){
+        futureMandatory += calculateMandatoryForMonth(i);
+      }
+      
+      // Общая доступная сумма за весь период
+      const totalAvailableForPeriod = (state.initial - state.target) - calculateTotalMandatory();
+      
+      // Сколько осталось после фактических трат (без учета обязательных, так как они уже вычтены из totalAvailableForPeriod)
+      const actualSpentWithoutMandatory = monthlyActuals.reduce((sum, v) => sum + v, 0);
+      const remainingAfterActual = totalAvailableForPeriod - actualSpentWithoutMandatory;
+      
+      // Количество оставшихся месяцев (после последнего месяца с тратами)
+      const remainingMonths = state.months - lastMonthWithExpenses - 1;
+      
+      // Новый равномерный лимит для всех оставшихся месяцев
+      if(remainingMonths > 0){
+        return remainingAfterActual / remainingMonths;
+      }
+      
+      return 0;
+    }
+
     // ===========================
     // DOM ЭЛЕМЕНТЫ
     // ===========================
@@ -1048,8 +1109,9 @@
       return arr;
     }
 
-    function makeActualAndForecastBalances(planned, initial, monthlyActuals, newMonthlyLimit){
+        function makeActualAndForecastBalances(planned, initial, monthlyActuals, newMonthlyLimit){
       const actual = [initial];
+      let currentBalance = initial;
       let savedCount = 0;
       
       // Проходим по всем месяцам с фактическими тратами
@@ -1058,8 +1120,8 @@
         const mandatoryForMonth = calculateMandatoryForMonth(i);
         
         if(v > 0){
-          const prev = actual[actual.length-1];
-          actual.push(prev - mandatoryForMonth - v);
+          currentBalance = currentBalance - mandatoryForMonth - v;
+          actual.push(currentBalance);
           savedCount++;
         }
         else {
@@ -1069,21 +1131,27 @@
       
       // Строим прогноз на оставшиеся месяцы
       const forecast = [];
-      const totalPoints = planned.length;
-      if(savedCount < monthlyActuals.length){
-        const startY = actual[actual.length-1];
-        forecast.push(startY);
-        const remainingSteps = (totalPoints-1) - savedCount;
+      if(savedCount < state.months){
+        forecast.push(currentBalance);
         
-        for(let i=1;i<=remainingSteps;i++){
-          const monthIdx = savedCount + i - 1;
-          const mandatoryForMonth = monthIdx < state.months ? calculateMandatoryForMonth(monthIdx) : 0;
-          const monthlyTotalSpend = mandatoryForMonth + (Number.isFinite(newMonthlyLimit) ? newMonthlyLimit : 0);
-          forecast.push(forecast[i-1] - monthlyTotalSpend);
+        // Считаем сколько осталось на все оставшиеся месяцы
+        const totalAvailableForPeriod = (state.initial - state.target) - calculateTotalMandatory();
+        const actualSpentWithoutMandatory = monthlyActuals.reduce((sum, v) => sum + v, 0);
+        const remainingAfterActual = totalAvailableForPeriod - actualSpentWithoutMandatory;
+        const remainingMonths = state.months - savedCount;
+        const equalMonthlyLimit = remainingMonths > 0 ? remainingAfterActual / remainingMonths : 0;
+        
+        for(let i = savedCount; i < state.months; i++){
+          const mandatoryForMonth = calculateMandatoryForMonth(i);
+          const monthlyTotalSpend = mandatoryForMonth + Math.max(0, equalMonthlyLimit);
+          currentBalance = currentBalance - monthlyTotalSpend;
+          forecast.push(currentBalance);
         }
       }
+      
       return { actualBalances: actual, forecastBalances: forecast };
     }
+
 
     function renderResults(data){
       const {
@@ -1114,6 +1182,11 @@
         function renderMonthsList(baseMonthlyLimit, currentLimit){
       $monthsList.innerHTML = '';
       if(state.months <= 0) return;
+      
+      // Получаем фактические траты
+      const monthlyActuals = state.monthlyTransactions.map(transactions => 
+        transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
+      );
 
       state.labels.forEach((label, idx) => {
         const transactions = state.monthlyTransactions[idx] || [];
@@ -1121,12 +1194,19 @@
         const mandatoryForMonth = calculateMandatoryForMonth(idx);
         const hasTransactions = transactions.length > 0;
         const isCurrent = isCurrentMonth(idx);
+        
+        // Вычисляем динамический лимит для этого месяца
+        const dynamicLimit = calculateDynamicLimitForMonth(idx, baseMonthlyLimit, monthlyActuals);
+        const isOverspent = monthTotal > dynamicLimit;
+        const isNegativeLimit = dynamicLimit < 0;
 
         const monthDiv = document.createElement('div');
         monthDiv.className = 'month' + (isCurrent ? ' current' : '');
+        if(isOverspent) monthDiv.style.borderColor = '#dc2626';
+        if(isNegativeLimit) monthDiv.style.background = 'rgba(220, 38, 38, 0.1)';
         
         // Добавляем обработчик клика для открытия детального просмотра
-        monthDiv.onclick = () => openMonthDetailModal(idx, label, baseMonthlyLimit, monthTotal, mandatoryForMonth);
+        monthDiv.onclick = () => openMonthDetailModal(idx, label, dynamicLimit, monthTotal, mandatoryForMonth);
 
         // Header
         const header = document.createElement('div');
@@ -1147,7 +1227,7 @@
         addBtn.innerHTML = '+';
         addBtn.title = 'Добавить расход';
         addBtn.onclick = (e) => {
-          e.stopPropagation(); // Предотвращаем открытие детального просмотра
+          e.stopPropagation();
           openAddExpenseModal(idx, label);
         };
 
@@ -1158,9 +1238,28 @@
         const stats = document.createElement('div');
         stats.className = 'month-stats';
 
-        const statPlanned = createStatItem('План (дискретно)', fmt0(baseMonthlyLimit));
+        // Определяем какой план показывать
+        let planLabel = 'План';
+        let lastMonthWithExpenses = -1;
+        for(let i = 0; i < monthlyActuals.length; i++){
+          if(monthlyActuals[i] > 0) lastMonthWithExpenses = i;
+        }
+        
+        if(idx === 0 && monthlyActuals[0] === 0){
+          planLabel = 'План (базовый)';
+        } else if(idx <= lastMonthWithExpenses){
+          planLabel = 'План (базовый)';
+        } else if(lastMonthWithExpenses >= 0){
+          planLabel = 'План (перерасчет)';
+        } else {
+          planLabel = 'План (базовый)';
+        }
+        const statPlanned = createStatItem(planLabel, fmt0(dynamicLimit));
+        if(isNegativeLimit) statPlanned.style.color = '#ff4444';
+        
         const statMandatory = createStatItem('Обязательные', fmt0(mandatoryForMonth));
         const statActual = createStatItem('Потрачено', fmt0(monthTotal));
+        if(isOverspent) statActual.style.color = '#ff4444';
 
         stats.appendChild(statPlanned);
         stats.appendChild(statMandatory);
@@ -1168,6 +1267,23 @@
 
         monthDiv.appendChild(header);
         monthDiv.appendChild(stats);
+        
+        // Предупреждение если лимит отрицательный
+        if(isNegativeLimit){
+          const warning = document.createElement('div');
+          warning.style.cssText = 'background:rgba(220,38,38,0.2);border:1px solid #dc2626;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;color:#ff8a8a;font-weight:600;';
+          warning.textContent = '⚠️ Бюджет исчерпан! Требуется корректировка плана.';
+          monthDiv.appendChild(warning);
+        }
+        
+        // Предупреждение о перерасходе
+        if(isOverspent && !isNegativeLimit){
+          const warning = document.createElement('div');
+          warning.style.cssText = 'background:rgba(255,138,138,0.1);border:1px solid #ff8a8a;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;color:#ff8a8a;';
+          const overspentAmount = monthTotal - dynamicLimit;
+          warning.innerHTML = `⚠️ Перерасход: ${fmt0(overspentAmount)}`;
+          monthDiv.appendChild(warning);
+        }
 
         // Показываем обязательные платежи для этого месяца
         if(mandatoryForMonth > 0){
@@ -1215,7 +1331,7 @@
             delBtn.textContent = '×';
             delBtn.style.padding = '2px 8px';
             delBtn.onclick = (e) => {
-              e.stopPropagation(); // Предотвращаем открытие детального просмотра
+              e.stopPropagation();
               deleteTransaction(idx, tIdx);
             };
             
@@ -1700,4 +1816,5 @@
   </script>
 </body>
 </html>
+
 
