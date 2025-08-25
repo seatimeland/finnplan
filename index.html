@@ -550,31 +550,6 @@
     .month-toggle-btn.collapsed {
       transform: rotate(-90deg);
     }
-    
-    .month-summary {
-      display: none;
-      font-size: 12px;
-      color: var(--muted);
-      margin-left: auto;
-      margin-right: 8px;
-    }
-    
-    .month.collapsed .month-summary {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    
-    .month-summary-item {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    
-    .month-summary-value {
-      color: var(--text);
-      font-weight: 600;
-    }
 
   </style>
 </head>
@@ -1360,7 +1335,7 @@
         
         // Определяем, должен ли месяц быть свернут
         const monthId = `month_${idx}`;
-        const isCollapsed = !isCurrent && (state.collapsedMonths[monthId] || (!isCurrent && state.collapsedMonths[monthId] !== false));
+        const isCollapsed = !isCurrent && (state.collapsedMonths[monthId] !== false);
         if (isCollapsed) {
           monthDiv.classList.add('collapsed');
           state.collapsedMonths[monthId] = true;
@@ -1398,29 +1373,8 @@
           toggleMonth(idx);
         };
         
-        // Краткая сводка для свернутого состояния
-        const summary = document.createElement('div');
-        summary.className = 'month-summary';
-        summary.innerHTML = `
-          <div class="month-summary-item">
-            <span>План:</span>
-            <span class="month-summary-value">${fmt0(dynamicLimit)}</span>
-          </div>
-          <div class="month-summary-item">
-            <span>Потрачено:</span>
-            <span class="month-summary-value" style="${isOverspent ? 'color:var(--warn)' : ''}">${fmt0(monthTotal)}</span>
-          </div>
-          ${mandatoryForMonth > 0 ? `
-            <div class="month-summary-item">
-              <span>Обязательные:</span>
-              <span class="month-summary-value">${fmt0(mandatoryForMonth)}</span>
-            </div>
-          ` : ''}
-        `;
-        
         leftHeader.appendChild(nameDiv);
         leftHeader.appendChild(toggleBtn);
-        leftHeader.appendChild(summary);
 
         const rightHeader = document.createElement('div');
         rightHeader.style.display = 'flex';
@@ -2084,6 +2038,7 @@
   </script>
 </body>
 </html>
+
 
 
 
