@@ -512,6 +512,70 @@
       color: #ff4444;
     }
 
+    /* Стили для сворачивания месяцев */
+    .month-toggle-btn {
+      background: transparent;
+      border: 1px solid #27305a;
+      color: var(--muted);
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    
+    .month-toggle-btn:hover {
+      background: rgba(109,211,251,.1);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    
+    .month.collapsed .month-content {
+      display: none;
+    }
+    
+    .month.collapsed {
+      padding: 10px 12px;
+    }
+    
+    .month.collapsed .month-header {
+      margin-bottom: 0;
+    }
+    
+    .month-toggle-btn.collapsed {
+      transform: rotate(-90deg);
+    }
+    
+    .month-summary {
+      display: none;
+      font-size: 12px;
+      color: var(--muted);
+      margin-left: auto;
+      margin-right: 8px;
+    }
+    
+    .month.collapsed .month-summary {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .month-summary-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .month-summary-value {
+      color: var(--text);
+      font-weight: 600;
+    }
+
   </style>
 </head>
 <body>
@@ -830,7 +894,8 @@
       mandatoryPayments: [], // Массив обязательных платежей [{name, amount, dayOfMonth}]
       monthlyTransactions: [], // Массив массивов транзакций по месяцам
       labels: [],
-      currentModalMonth: -1
+      currentModalMonth: -1,
+      collapsedMonths: {} // Добавьте эту строку для хранения состояния сворачивания
     };
 
     // Локальное хранилище
@@ -840,7 +905,8 @@
         const payload = {
           ...state,
           start: state.start ? state.start.toISOString() : null,
-          end: state.end ? state.end.toISOString() : null
+          end: state.end ? state.end.toISOString() : null,
+          collapsedMonths: state.collapsedMonths // Добавьте эту строку
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       }catch(e){}
@@ -859,6 +925,7 @@
         state.mandatoryPayments = obj.mandatoryPayments ?? [];
         state.monthlyTransactions = obj.monthlyTransactions ?? [];
         state.labels = obj.labels ?? [];
+        state.collapsedMonths = obj.collapsedMonths ?? {}; // Добавьте эту строку
       }catch(e){}
     }
 
@@ -1012,6 +1079,33 @@
         days: daysCount,
         total: totalSpent
       };
+    }
+
+    // ===========================
+    // УПРАВЛЕНИЕ СВОРАЧИВАНИЕМ МЕСЯЦЕВ
+    // ===========================
+    function toggleMonth(monthIndex) {
+      const monthId = `month_${monthIndex}`;
+      state.collapsedMonths[monthId] = !state.collapsedMonths[monthId];
+      saveState();
+      
+      const monthDiv = document.querySelector(`[data-month-index="${monthIndex}"]`);
+      if (monthDiv) {
+        if (state.collapsedMonths[monthId]) {
+          monthDiv.classList.add('collapsed');
+        } else {
+          monthDiv.classList.remove('collapsed');
+        }
+        
+        const toggleBtn = monthDiv.querySelector('.month-toggle-btn');
+        if (toggleBtn) {
+          if (state.collapsedMonths[monthId]) {
+            toggleBtn.classList.add('collapsed');
+          } else {
+            toggleBtn.classList.remove('collapsed');
+          }
+        }
+      }
     }
 
     // ===========================
@@ -1262,15 +1356,27 @@
 
         const monthDiv = document.createElement('div');
         monthDiv.className = 'month' + (isCurrent ? ' current' : '');
+        monthDiv.setAttribute('data-month-index', idx);
+        
+        // Определяем, должен ли месяц быть свернут
+        const monthId = `month_${idx}`;
+        const isCollapsed = !isCurrent && (state.collapsedMonths[monthId] || (!isCurrent && state.collapsedMonths[monthId] !== false));
+        if (isCollapsed) {
+          monthDiv.classList.add('collapsed');
+          state.collapsedMonths[monthId] = true;
+        }
+        
         if(isOverspent) monthDiv.style.borderColor = '#dc2626';
         if(isNegativeLimit) monthDiv.style.background = 'rgba(220, 38, 38, 0.1)';
-        
-        // Добавляем обработчик клика для открытия детального просмотра
-        monthDiv.onclick = () => openMonthDetailModal(idx, label, dynamicLimit, monthTotal, mandatoryForMonth);
 
-        // Header
+        // Header с кнопкой сворачивания
         const header = document.createElement('div');
         header.className = 'month-header';
+        
+        const leftHeader = document.createElement('div');
+        leftHeader.style.display = 'flex';
+        leftHeader.style.alignItems = 'center';
+        leftHeader.style.flex = '1';
         
         const nameDiv = document.createElement('div');
         nameDiv.className = 'month-name';
@@ -1281,18 +1387,71 @@
           badge.textContent = 'ТЕКУЩИЙ';
           nameDiv.appendChild(badge);
         }
+        
+        // Кнопка сворачивания/разворачивания
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'month-toggle-btn' + (isCollapsed ? ' collapsed' : '');
+        toggleBtn.innerHTML = '▼';
+        toggleBtn.title = isCollapsed ? 'Развернуть' : 'Свернуть';
+        toggleBtn.onclick = (e) => {
+          e.stopPropagation();
+          toggleMonth(idx);
+        };
+        
+        // Краткая сводка для свернутого состояния
+        const summary = document.createElement('div');
+        summary.className = 'month-summary';
+        summary.innerHTML = `
+          <div class="month-summary-item">
+            <span>План:</span>
+            <span class="month-summary-value">${fmt0(dynamicLimit)}</span>
+          </div>
+          <div class="month-summary-item">
+            <span>Потрачено:</span>
+            <span class="month-summary-value" style="${isOverspent ? 'color:var(--warn)' : ''}">${fmt0(monthTotal)}</span>
+          </div>
+          ${mandatoryForMonth > 0 ? `
+            <div class="month-summary-item">
+              <span>Обязательные:</span>
+              <span class="month-summary-value">${fmt0(mandatoryForMonth)}</span>
+            </div>
+          ` : ''}
+        `;
+        
+        leftHeader.appendChild(nameDiv);
+        leftHeader.appendChild(toggleBtn);
+        leftHeader.appendChild(summary);
 
+        const rightHeader = document.createElement('div');
+        rightHeader.style.display = 'flex';
+        rightHeader.style.alignItems = 'center';
+        
         const addBtn = document.createElement('button');
         addBtn.className = 'btn accent icon small';
         addBtn.innerHTML = '+';
         addBtn.title = 'Добавить расход';
         addBtn.onclick = (e) => {
           e.stopPropagation();
+          // Разворачиваем месяц при добавлении расхода
+          if (state.collapsedMonths[monthId]) {
+            toggleMonth(idx);
+          }
           openAddExpenseModal(idx, label);
         };
+        
+        rightHeader.appendChild(addBtn);
 
-        header.appendChild(nameDiv);
-        header.appendChild(addBtn);
+        header.appendChild(leftHeader);
+        header.appendChild(rightHeader);
+        monthDiv.appendChild(header);
+
+        // Контент месяца (скрывается при сворачивании)
+        const monthContent = document.createElement('div');
+        monthContent.className = 'month-content';
+        
+        // Добавляем обработчик клика для открытия детального просмотра
+        monthContent.onclick = () => openMonthDetailModal(idx, label, dynamicLimit, monthTotal, mandatoryForMonth);
+        monthContent.style.cursor = 'pointer';
 
         // Stats
         const stats = document.createElement('div');
@@ -1325,8 +1484,7 @@
         stats.appendChild(statMandatory);
         stats.appendChild(statActual);
 
-        monthDiv.appendChild(header);
-        monthDiv.appendChild(stats);
+        monthContent.appendChild(stats);
         
         // Добавляем блок со средней тратой за день для текущего месяца
         if(isCurrent && dailyAverage && dailyAverage.days > 0){
@@ -1345,7 +1503,7 @@
               </div>
             </div>
           `;
-          monthDiv.appendChild(dailyAvgDiv);
+          monthContent.appendChild(dailyAvgDiv);
         }
         
         // Предупреждение если лимит отрицательный
@@ -1353,7 +1511,7 @@
           const warning = document.createElement('div');
           warning.style.cssText = 'background:rgba(220,38,38,0.2);border:1px solid #dc2626;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;color:#ff8a8a;font-weight:600;';
           warning.textContent = '⚠️ Бюджет исчерпан! Требуется корректировка плана.';
-          monthDiv.appendChild(warning);
+          monthContent.appendChild(warning);
         }
         
         // Предупреждение о перерасходе
@@ -1362,7 +1520,7 @@
           warning.style.cssText = 'background:rgba(255,138,138,0.1);border:1px solid #ff8a8a;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;color:#ff8a8a;';
           const overspentAmount = monthTotal - dynamicLimit;
           warning.innerHTML = `⚠️ Перерасход: ${fmt0(overspentAmount)}`;
-          monthDiv.appendChild(warning);
+          monthContent.appendChild(warning);
         }
 
         // Показываем обязательные платежи для этого месяца
@@ -1379,7 +1537,7 @@
           }
           
           mandatoryInfo.innerHTML = `<div style="color:var(--purple);font-weight:600;margin-bottom:4px;">Обязательные платежи:</div>${paymentsForMonth.join('<br>')}`;
-          monthDiv.appendChild(mandatoryInfo);
+          monthContent.appendChild(mandatoryInfo);
         }
 
         // Transactions list
@@ -1423,9 +1581,10 @@
             transList.appendChild(transDiv);
           });
           
-          monthDiv.appendChild(transList);
+          monthContent.appendChild(transList);
         }
 
+        monthDiv.appendChild(monthContent);
         $monthsList.appendChild(monthDiv);
       });
     }
@@ -1843,8 +2002,15 @@
       $start.value = '';
       $end.value = '';
       Object.assign(state, {
-        initial:0, target:0, start:null, end:null, 
-        months:0, mandatoryPayments:[], monthlyTransactions:[], labels:[]
+        initial:0,
+        target:0,
+        start:null,
+        end:null,
+        months:0,
+        mandatoryPayments:[],
+        monthlyTransactions:[],
+        labels:[],
+        collapsedMonths:{} // Добавьте эту строку
       });
       localStorage.removeItem(STORAGE_KEY);
       recalcAll();
@@ -1918,6 +2084,7 @@
   </script>
 </body>
 </html>
+
 
 
 
