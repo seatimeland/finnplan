@@ -958,6 +958,63 @@
     }
 
     // ===========================
+    // РАСЧЕТ СРЕДНЕЙ ТРАТЫ ЗА ДЕНЬ
+    // ===========================
+    function calculateDailyAverage(monthIndex) {
+      if (!state.start || !state.end) return null;
+      if (!isCurrentMonth(monthIndex)) return null;
+      
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      // Границы месяца
+      const monthStart = new Date(state.start.getFullYear(), state.start.getMonth() + monthIndex, 1);
+      const monthEnd = new Date(state.start.getFullYear(), state.start.getMonth() + monthIndex + 1, 0);
+      
+      // Определяем начало отсчета
+      let countStart;
+      if (monthIndex === 0) {
+        // Для первого месяца берем дату начала плана
+        countStart = new Date(state.start.getFullYear(), state.start.getMonth(), state.start.getDate());
+      } else {
+        // Для остальных месяцев - первое число
+        countStart = monthStart;
+      }
+      
+      // Определяем конец отсчета (минимум из: сегодня, конец месяца, конец плана)
+      let countEnd = today;
+      if (monthEnd < countEnd) countEnd = monthEnd;
+      if (state.end < countEnd) countEnd = state.end;
+      
+      // Проверяем, что интервал валидный
+      if (countEnd < countStart) return null;
+      
+      // Считаем количество дней (включительно)
+      const daysCount = Math.floor((countEnd - countStart) / (1000 * 60 * 60 * 24)) + 1;
+      
+      // Получаем транзакции текущего месяца
+      const transactions = state.monthlyTransactions[monthIndex] || [];
+      
+      // Считаем сумму трат за период
+      let totalSpent = 0;
+      transactions.forEach(t => {
+        const transDate = new Date(t.date);
+        const transDateOnly = new Date(transDate.getFullYear(), transDate.getMonth(), transDate.getDate());
+        if (transDateOnly >= countStart && transDateOnly <= countEnd) {
+          totalSpent += t.amount || 0;
+        }
+      });
+      
+      const dailyAvg = totalSpent / daysCount;
+      
+      return {
+        average: dailyAvg,
+        days: daysCount,
+        total: totalSpent
+      };
+    }
+
+    // ===========================
     // DOM ЭЛЕМЕНТЫ
     // ===========================
     const $initial = document.getElementById('initial');
@@ -1195,6 +1252,9 @@
         const hasTransactions = transactions.length > 0;
         const isCurrent = isCurrentMonth(idx);
         
+        // Рассчитываем среднюю трату за день для текущего месяца
+        const dailyAverage = isCurrent ? calculateDailyAverage(idx) : null;
+        
         // Вычисляем динамический лимит для этого месяца
         const dynamicLimit = calculateDynamicLimitForMonth(idx, baseMonthlyLimit, monthlyActuals);
         const isOverspent = monthTotal > dynamicLimit;
@@ -1267,6 +1327,26 @@
 
         monthDiv.appendChild(header);
         monthDiv.appendChild(stats);
+        
+        // Добавляем блок со средней тратой за день для текущего месяца
+        if(isCurrent && dailyAverage && dailyAverage.days > 0){
+          const dailyAvgDiv = document.createElement('div');
+          dailyAvgDiv.style.cssText = 'background: linear-gradient(135deg, rgba(109,211,251,.08), rgba(167,139,250,.08)); border:1px solid #4338ca; border-radius:8px; padding:10px; margin:10px 0;';
+          dailyAvgDiv.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">Средняя трата в день</div>
+                <div style="font-size:16px; font-weight:700; color:var(--accent);">${fmt0(dailyAverage.average)}</div>
+                <div style="font-size:11px; color:var(--muted); margin-top:2px;">за ${dailyAverage.days} ${dailyAverage.days === 1 ? 'день' : dailyAverage.days < 5 ? 'дня' : 'дней'}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:11px; color:var(--muted);">Всего потрачено:</div>
+                <div style="font-size:14px; font-weight:600; color:var(--text);">${fmt0(dailyAverage.total)}</div>
+              </div>
+            </div>
+          `;
+          monthDiv.appendChild(dailyAvgDiv);
+        }
         
         // Предупреждение если лимит отрицательный
         if(isNegativeLimit){
@@ -1464,6 +1544,9 @@
       const overspent = Math.max(0, actualSpent - plannedAmount);
       const balance = plannedAmount - actualSpent;
       
+      // Рассчитываем среднюю трату за день
+      const dailyAverage = calculateDailyAverage(monthIndex);
+      
       // Обновляем статистику
       document.getElementById('detailPlan').textContent = fmt0(plannedAmount);
       document.getElementById('detailMandatory').textContent = fmt0(mandatoryAmount);
@@ -1477,6 +1560,25 @@
         balanceEl.textContent = '−' + fmt0(Math.abs(balance));
       } else {
         balanceEl.textContent = '+' + fmt0(balance);
+      }
+      
+      // Добавляем среднюю трату в модальное окно, если это текущий месяц
+      const detailStatsDiv = document.querySelector('.detail-stats');
+      const existingDailyAvg = document.getElementById('dailyAvgStat');
+      if(existingDailyAvg) existingDailyAvg.remove();
+      
+      if(dailyAverage && dailyAverage.days > 0){
+        const dailyAvgStat = document.createElement('div');
+        dailyAvgStat.id = 'dailyAvgStat';
+        dailyAvgStat.className = 'detail-stat';
+        dailyAvgStat.style.gridColumn = 'span 2';
+        dailyAvgStat.style.background = 'linear-gradient(135deg, rgba(109,211,251,.08), rgba(167,139,250,.08))';
+        dailyAvgStat.style.border = '1px solid #4338ca';
+        dailyAvgStat.innerHTML = `
+          <div class="detail-stat-label">Средняя трата в день (за ${dailyAverage.days} ${dailyAverage.days === 1 ? 'день' : dailyAverage.days < 5 ? 'дня' : 'дней'})</div>
+          <div class="detail-stat-value" style="color:var(--accent);">${fmt0(dailyAverage.average)}</div>
+        `;
+        detailStatsDiv.appendChild(dailyAvgStat);
       }
       
       // Обновляем легенду
@@ -1816,5 +1918,6 @@
   </script>
 </body>
 </html>
+
 
 
