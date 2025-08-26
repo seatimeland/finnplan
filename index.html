@@ -801,6 +801,156 @@
   font-size: 13px;
   line-height: 1.5;
 }
+
+    /* Улучшенный график */
+#chartWrap {
+  background: linear-gradient(135deg, #0d1122 0%, #141829 100%);
+  border: 1px solid #27305a;
+  border-radius: 16px;
+  padding: 16px;
+  position: relative;
+  box-shadow: 0 10px 40px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.03);
+}
+
+#chart {
+  width: 100%;
+  height: 360px;
+  display: block;
+  cursor: crosshair;
+}
+
+.chart-tooltip {
+  position: absolute;
+  background: rgba(23, 27, 46, 0.98);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px;
+  pointer-events: none;
+  z-index: 100;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  backdrop-filter: blur(10px);
+  display: none;
+  min-width: 180px;
+}
+
+.chart-tooltip.show {
+  display: block;
+}
+
+.tooltip-header {
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(109,211,251,.2);
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.tooltip-label {
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tooltip-value {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tooltip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.chart-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-toggle {
+  padding: 6px 12px;
+  background: rgba(109,211,251,.1);
+  border: 1px solid #27305a;
+  border-radius: 20px;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-toggle:hover {
+  background: rgba(109,211,251,.2);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.chart-toggle.active {
+  background: var(--accent);
+  color: #0f1220;
+  border-color: var(--accent);
+}
+
+.chart-toggle .toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 12px 0 0;
+  padding: 12px;
+  background: rgba(0,0,0,.2);
+  border-radius: 8px;
+}
+
+.legend-item {
+  transition: all 0.2s;
+}
+
+.legend-item:hover {
+  transform: scale(1.05);
+}
+
+.chart-gradient-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+}
+
+@keyframes chartFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chart-animated {
+  animation: chartFadeIn 0.5s ease-out;
+}
     
     
 
@@ -905,27 +1055,52 @@
 
         <div class="divider"></div>
 
-        <div id="chartWrap">
-          <canvas id="chart" width="1000" height="360"></canvas>
-          <div class="legend">
-  <span class="pill legend-item">
-    <span class="dot plan"></span> План по балансу
-  </span>
-  <span class="pill legend-item">
-    <span class="dot actual"></span> Фактический баланс
-  </span>
-  <span class="pill legend-item clickable" onclick="openForecastDetailModal('uniform')">
-    <span class="dot forecast"></span> Прогноз равномерный
-    <span class="info-icon">📊</span>
-    <span class="tooltip">Клик для подробностей</span>
-  </span>
-  <span class="pill legend-item clickable" onclick="openForecastDetailModal('trend')">
-    <span class="dot trend"></span> Прогноз по истории
-    <span class="info-icon">📊</span>
-    <span class="tooltip">Клик для подробностей</span>
-  </span>
+        <div id="chartWrap" class="chart-animated">
+  <div class="chart-controls">
+    <button class="chart-toggle active" data-line="plan" onclick="toggleChartLine('plan')">
+      <span class="toggle-dot" style="background: #7aa2ff"></span>
+      План
+    </button>
+    <button class="chart-toggle active" data-line="actual" onclick="toggleChartLine('actual')">
+      <span class="toggle-dot" style="background: #ffb86b"></span>
+      Фактический
+    </button>
+    <button class="chart-toggle active" data-line="forecast" onclick="toggleChartLine('forecast')">
+      <span class="toggle-dot" style="background: #4ade80"></span>
+      Равномерный прогноз
+    </button>
+    <button class="chart-toggle active" data-line="trend" onclick="toggleChartLine('trend')">
+      <span class="toggle-dot" style="background: #ff6b6b"></span>
+      Прогноз по истории
+    </button>
+  </div>
+  
+  <canvas id="chart"></canvas>
+  
+  <div class="chart-tooltip" id="chartTooltip">
+    <div class="tooltip-header" id="tooltipHeader">—</div>
+    <div id="tooltipContent"></div>
+  </div>
+  
+  <div class="legend">
+    <span class="pill legend-item">
+      <span class="dot plan"></span> План по балансу
+    </span>
+    <span class="pill legend-item">
+      <span class="dot actual"></span> Фактический баланс
+    </span>
+    <span class="pill legend-item clickable" onclick="openForecastDetailModal('uniform')">
+      <span class="dot forecast"></span> Прогноз равномерный
+      <span class="info-icon">📊</span>
+      <span class="tooltip">Клик для подробностей</span>
+    </span>
+    <span class="pill legend-item clickable" onclick="openForecastDetailModal('trend')">
+      <span class="dot trend"></span> Прогноз по истории
+      <span class="info-icon">📊</span>
+      <span class="tooltip">Клик для подробностей</span>
+    </span>
+  </div>
 </div>
-        </div>
       </section>
     </div>
 
@@ -2626,126 +2801,484 @@ function closeForecastDetailModal() {
     }
 
     // ===========================
+// УПРАВЛЕНИЕ ВИДИМОСТЬЮ ЛИНИЙ ГРАФИКА
+// ===========================
+const chartLinesVisibility = {
+  plan: true,
+  actual: true,
+  forecast: true,
+  trend: true
+};
+
+function toggleChartLine(lineType) {
+  chartLinesVisibility[lineType] = !chartLinesVisibility[lineType];
+  
+  // Обновляем визуальное состояние кнопки
+  const button = document.querySelector(`[data-line="${lineType}"]`);
+  if (button) {
+    button.classList.toggle('active', chartLinesVisibility[lineType]);
+  }
+  
+  // Перерисовываем график
+  recalcAll();
+}
+
+// ===========================
+// ИНТЕРАКТИВНОСТЬ ГРАФИКА
+// ===========================
+let chartData = {
+  labels: [],
+  planned: [],
+  actual: [],
+  forecast: [],
+  trend: []
+};
+
+function initChartInteractivity() {
+  const canvas = document.getElementById('chart');
+  const tooltip = document.getElementById('chartTooltip');
+  
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Определяем индекс месяца по позиции мыши
+    const chartWidth = rect.width - 76; // Учитываем отступы
+    const monthWidth = chartWidth / (chartData.labels.length - 1);
+    const monthIndex = Math.round((x - 60) / monthWidth);
+    
+    if (monthIndex >= 0 && monthIndex < chartData.labels.length) {
+      showTooltip(monthIndex, e.clientX, e.clientY);
+    } else {
+      hideTooltip();
+    }
+  });
+  
+  canvas.addEventListener('mouseleave', () => {
+    hideTooltip();
+  });
+}
+
+function showTooltip(monthIndex, mouseX, mouseY) {
+  const tooltip = document.getElementById('chartTooltip');
+  const header = document.getElementById('tooltipHeader');
+  const content = document.getElementById('tooltipContent');
+  
+  if (!chartData.labels[monthIndex]) return;
+  
+  header.textContent = chartData.labels[monthIndex];
+  
+  let html = '';
+  
+  // Добавляем данные по каждой линии
+  if (chartData.planned[monthIndex] !== undefined && chartLinesVisibility.plan) {
+    html += `
+      <div class="tooltip-row">
+        <div class="tooltip-label">
+          <span class="tooltip-dot" style="background: #7aa2ff"></span>
+          План
+        </div>
+        <div class="tooltip-value">${fmt0(chartData.planned[monthIndex])}</div>
+      </div>
+    `;
+  }
+  
+  if (chartData.actual[monthIndex] !== undefined && chartLinesVisibility.actual) {
+    html += `
+      <div class="tooltip-row">
+        <div class="tooltip-label">
+          <span class="tooltip-dot" style="background: #ffb86b"></span>
+          Фактический
+        </div>
+        <div class="tooltip-value">${fmt0(chartData.actual[monthIndex])}</div>
+      </div>
+    `;
+  }
+  
+  // Индекс для прогнозов
+  const forecastIndex = monthIndex - (chartData.actual.length - 1);
+  
+  if (forecastIndex >= 0 && chartData.forecast[forecastIndex] !== undefined && chartLinesVisibility.forecast) {
+    html += `
+      <div class="tooltip-row">
+        <div class="tooltip-label">
+          <span class="tooltip-dot" style="background: #4ade80"></span>
+          Равномерный
+        </div>
+        <div class="tooltip-value">${fmt0(chartData.forecast[forecastIndex])}</div>
+      </div>
+    `;
+  }
+  
+  if (forecastIndex >= 0 && chartData.trend[forecastIndex] !== undefined && chartLinesVisibility.trend) {
+    html += `
+      <div class="tooltip-row">
+        <div class="tooltip-label">
+          <span class="tooltip-dot" style="background: #ff6b6b"></span>
+          По истории
+        </div>
+        <div class="tooltip-value">${fmt0(chartData.trend[forecastIndex])}</div>
+      </div>
+    `;
+  }
+  
+  content.innerHTML = html;
+  
+  // Позиционируем tooltip
+  const rect = document.getElementById('chartWrap').getBoundingClientRect();
+  let left = mouseX - rect.left + 10;
+  let top = mouseY - rect.top - 40;
+  
+  // Проверяем, не выходит ли за границы
+  if (left + 200 > rect.width) {
+    left = mouseX - rect.left - 200;
+  }
+  if (top < 0) {
+    top = mouseY - rect.top + 20;
+  }
+  
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = top + 'px';
+  tooltip.classList.add('show');
+}
+
+function hideTooltip() {
+  document.getElementById('chartTooltip').classList.remove('show');
+}
+
+    // ===========================
     // ГРАФИК
     // ===========================
-    function drawChart(labels, planned, actual, forecast, trendForecast){
-  const w = $chart.width, h = $chart.height;
-  ctx.clearRect(0,0,w,h);
-
-  const padL = 60, padR = 16, padT = 14, padB = 38;
+    function drawChart(labels, planned, actual, forecast, trendForecast) {
+  const canvas = document.getElementById('chart');
+  const ctx = canvas.getContext('2d');
+  
+  // Устанавливаем размер canvas для Retina дисплеев
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  
+  const w = rect.width;
+  const h = rect.height;
+  
+  // Сохраняем данные для интерактивности
+  chartData = {
+    labels: labels || [],
+    planned: planned || [],
+    actual: actual || [],
+    forecast: forecast || [],
+    trend: trendForecast || []
+  };
+  
+  ctx.clearRect(0, 0, w, h);
+  
+  const padL = 60, padR = 16, padT = 20, padB = 40;
   const gw = w - padL - padR;
   const gh = h - padT - padB;
-
+  
   const ys = []
-    .concat(Array.isArray(planned)?planned:[])
-    .concat(Array.isArray(actual)?actual:[])
-    .concat(Array.isArray(forecast)?forecast:[])
-    .concat(Array.isArray(trendForecast)?trendForecast:[])
+    .concat(Array.isArray(planned) ? planned : [])
+    .concat(Array.isArray(actual) ? actual : [])
+    .concat(Array.isArray(forecast) ? forecast : [])
+    .concat(Array.isArray(trendForecast) ? trendForecast : [])
     .filter(Number.isFinite);
-
-  if(ys.length === 0){
-    drawGrid(padL, padT, gw, gh, 4, 4);
+  
+  if (ys.length === 0) {
+    drawEnhancedGrid(ctx, padL, padT, gw, gh, 5, 4);
     return;
   }
-
+  
   let yMin = Math.min(...ys), yMax = Math.max(...ys);
-  const pad = Math.max(1000, (yMax - yMin)*0.08);
-  yMin -= pad; yMax += pad;
-  if(yMax === yMin){ yMax += 1; yMin -= 1; }
-
-  drawGrid(padL, padT, gw, gh, 5, labels.length || 4);
-  drawYTicks(padL, padT, gw, gh, yMin, yMax, 5);
-  drawXLabels(labels, padL, padT, gw, gh);
-
-  const X = (i, totalPoints)=>{
+  const pad = Math.max(1000, (yMax - yMin) * 0.1);
+  yMin -= pad;
+  yMax += pad;
+  if (yMax === yMin) { yMax += 1; yMin -= 1; }
+  
+  // Рисуем сетку и оси
+  drawEnhancedGrid(ctx, padL, padT, gw, gh, 5, labels.length || 4);
+  drawEnhancedYAxis(ctx, padL, padT, gw, gh, yMin, yMax, 5);
+  drawEnhancedXAxis(ctx, labels, padL, padT, gw, gh);
+  
+  const X = (i, totalPoints) => {
     const t = totalPoints === 0 ? 0 : i / totalPoints;
     return padL + t * gw;
   };
-  const Y = (val)=>{
+  
+  const Y = (val) => {
     const t = (val - yMin) / (yMax - yMin);
     return padT + (1 - t) * gh;
   };
-
-  // План
-  if(planned && planned.length){
-    ctx.lineWidth = 2;
-    ctx.setLineDash([]);
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line1').trim();
+  
+  // Добавляем градиенты
+  const planGradient = ctx.createLinearGradient(0, padT, 0, padT + gh);
+  planGradient.addColorStop(0, 'rgba(122, 162, 255, 0.3)');
+  planGradient.addColorStop(1, 'rgba(122, 162, 255, 0.0)');
+  
+  const actualGradient = ctx.createLinearGradient(0, padT, 0, padT + gh);
+  actualGradient.addColorStop(0, 'rgba(255, 184, 107, 0.3)');
+  actualGradient.addColorStop(1, 'rgba(255, 184, 107, 0.0)');
+  
+  // План - с заливкой
+  if (planned && planned.length && chartLinesVisibility.plan) {
+    // Заливка под линией
+    ctx.fillStyle = planGradient;
     ctx.beginPath();
-    for(let i=0;i<planned.length;i++){
-      const x = X(i, planned.length-1), y = Y(planned[i]);
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    for (let i = 0; i < planned.length; i++) {
+      const x = X(i, planned.length - 1), y = Y(planned[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
-    ctx.stroke();
-  }
-
-  // Фактический
-  if(actual && actual.length){
-    ctx.lineWidth = 3;
-    ctx.setLineDash([]);
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line2').trim();
-    ctx.beginPath();
-    for(let i=0;i<actual.length;i++){
-      const x = X(i, (planned?.length||1)-1), y = Y(actual[i]);
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
+    ctx.lineTo(X(planned.length - 1, planned.length - 1), padT + gh);
+    ctx.lineTo(X(0, planned.length - 1), padT + gh);
+    ctx.closePath();
+    ctx.fill();
     
-    // Точки
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--line2').trim();
-    for(let i=0;i<actual.length;i++){
-      const x = X(i, (planned?.length||1)-1), y = Y(actual[i]);
+    // Линия
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#7aa2ff';
+    ctx.shadowColor = 'rgba(122, 162, 255, 0.5)';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    for (let i = 0; i < planned.length; i++) {
+      const x = X(i, planned.length - 1), y = Y(planned[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  
+  // Фактический - с заливкой и точками
+  if (actual && actual.length && chartLinesVisibility.actual) {
+    // Заливка
+    ctx.fillStyle = actualGradient;
+    ctx.beginPath();
+    for (let i = 0; i < actual.length; i++) {
+      const x = X(i, (planned?.length || 1) - 1), y = Y(actual[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.lineTo(X(actual.length - 1, (planned?.length || 1) - 1), padT + gh);
+    ctx.lineTo(X(0, (planned?.length || 1) - 1), padT + gh);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Линия
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffb86b';
+    ctx.shadowColor = 'rgba(255, 184, 107, 0.5)';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    for (let i = 0; i < actual.length; i++) {
+      const x = X(i, (planned?.length || 1) - 1), y = Y(actual[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    
+    // Точки с анимацией
+    for (let i = 0; i < actual.length; i++) {
+      const x = X(i, (planned?.length || 1) - 1), y = Y(actual[i]);
+      
+      // Внешний круг
+      ctx.fillStyle = 'rgba(255, 184, 107, 0.2)';
+      ctx.beginPath();
+      ctx.arc(x, y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Внутренний круг
+      ctx.fillStyle = '#ffb86b';
       ctx.beginPath();
       ctx.arc(x, y, 4, 0, Math.PI * 2);
       ctx.fill();
-    }
-  }
-
-  // Прогноз равномерный
-  if(forecast && forecast.length){
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8,4]);
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line3').trim();
-    ctx.beginPath();
-    const totalPoints = (planned?.length||1)-1;
-    const startIndex = (actual?.length||1)-1;
-    for(let i=0;i<forecast.length;i++){
-      const x = X(startIndex + i, totalPoints);
-      const y = Y(forecast[i]);
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-
-  // Прогноз на основе истории (новая линия)
-  if(trendForecast && trendForecast.length > 1){
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4,4]);
-    ctx.strokeStyle = '#ff6b6b';
-    ctx.globalAlpha = 0.8;
-    ctx.beginPath();
-    const totalPoints = (planned?.length||1)-1;
-    const startIndex = (actual?.length||1)-1;
-    for(let i=0;i<trendForecast.length;i++){
-      const x = X(startIndex + i, totalPoints);
-      const y = Y(trendForecast[i]);
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 1;
-    
-    // Точка в конце прогноза
-    if(trendForecast.length > 0){
-      const lastX = X(startIndex + trendForecast.length - 1, totalPoints);
-      const lastY = Y(trendForecast[trendForecast.length - 1]);
-      ctx.fillStyle = '#ff6b6b';
+      
+      // Белая точка в центре
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.beginPath();
-      ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
       ctx.fill();
     }
   }
+  
+  // Прогноз равномерный
+  if (forecast && forecast.length && chartLinesVisibility.forecast) {
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([10, 5]);
+    ctx.strokeStyle = '#4ade80';
+    ctx.shadowColor = 'rgba(74, 222, 128, 0.4)';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    const totalPoints = (planned?.length || 1) - 1;
+    const startIndex = (actual?.length || 1) - 1;
+    for (let i = 0; i < forecast.length; i++) {
+      const x = X(startIndex + i, totalPoints);
+      const y = Y(forecast[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+    
+    // Точка в конце
+    if (forecast.length > 0) {
+      const lastX = X(startIndex + forecast.length - 1, totalPoints);
+      const lastY = Y(forecast[forecast.length - 1]);
+      ctx.fillStyle = '#4ade80';
+      ctx.beginPath();
+      ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  
+  // Прогноз по истории
+  if (trendForecast && trendForecast.length > 1 && chartLinesVisibility.trend) {
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = '#ff6b6b';
+    ctx.shadowColor = 'rgba(255, 107, 107, 0.4)';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    const totalPoints = (planned?.length || 1) - 1;
+    const startIndex = (actual?.length || 1) - 1;
+    for (let i = 0; i < trendForecast.length; i++) {
+      const x = X(startIndex + i, totalPoints);
+      const y = Y(trendForecast[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+    
+    // Точка в конце
+    if (trendForecast.length > 0) {
+      const lastX = X(startIndex + trendForecast.length - 1, totalPoints);
+      const lastY = Y(trendForecast[trendForecast.length - 1]);
+      
+      // Мигающая точка для привлечения внимания
+      ctx.fillStyle = 'rgba(255, 107, 107, 0.3)';
+      ctx.beginPath();
+      ctx.arc(lastX, lastY, 8, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.fillStyle = '#ff6b6b';
+      ctx.beginPath();
+      ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  
+  // Добавляем линию целевого баланса
+  if (state.target !== undefined) {
+    const targetY = Y(state.target);
+    ctx.strokeStyle = 'rgba(167, 139, 250, 0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([8, 4]);
+    ctx.beginPath();
+    ctx.moveTo(padL, targetY);
+    ctx.lineTo(padL + gw, targetY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Метка
+    ctx.fillStyle = 'rgba(167, 139, 250, 0.8)';
+    ctx.font = '11px Inter, system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('Цель', padL - 8, targetY + 3);
+  }
+}
+
+function drawEnhancedGrid(ctx, x, y, w, h, rows, cols) {
+  ctx.save();
+  
+  // Основная сетка
+  ctx.strokeStyle = 'rgba(42, 48, 80, 0.3)';
+  ctx.lineWidth = 1;
+  
+  for (let c = 0; c <= cols; c++) {
+    const xx = x + (w * c / cols);
+    ctx.beginPath();
+    ctx.moveTo(xx, y);
+    ctx.lineTo(xx, y + h);
+    ctx.stroke();
+  }
+  
+  for (let r = 0; r <= rows; r++) {
+    const yy = y + (h * r / rows);
+    ctx.beginPath();
+    ctx.moveTo(x, yy);
+    ctx.lineTo(x + w, yy);
+    ctx.stroke();
+  }
+  
+  // Дополнительная мелкая сетка
+  ctx.strokeStyle = 'rgba(42, 48, 80, 0.1)';
+  ctx.lineWidth = 0.5;
+  
+  for (let c = 0; c < cols * 2; c++) {
+    const xx = x + (w * c / (cols * 2));
+    if (c % 2 !== 0) {
+      ctx.beginPath();
+      ctx.moveTo(xx, y);
+      ctx.lineTo(xx, y + h);
+      ctx.stroke();
+    }
+  }
+  
+  ctx.restore();
+}
+
+function drawEnhancedYAxis(ctx, x, y, w, h, vmin, vmax, rows) {
+  ctx.save();
+  ctx.fillStyle = '#8e97b3';
+  ctx.font = '12px Inter, system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  
+  for (let r = 0; r <= rows; r++) {
+    const t = r / rows;
+    const yy = y + (h * t);
+    const val = vmax - (vmax - vmin) * t;
+    const label = fmtShort(val) + ' ₽';
+    
+    // Фон для текста
+    ctx.fillStyle = 'rgba(15, 18, 32, 0.8)';
+    ctx.fillRect(x - 55, yy - 8, 50, 16);
+    
+    // Текст
+    ctx.fillStyle = '#8e97b3';
+    ctx.fillText(label, x - 8, yy);
+  }
+  ctx.restore();
+}
+
+function drawEnhancedXAxis(ctx, labels, x, y, w, h) {
+  if (!labels || !labels.length) return;
+  
+  ctx.save();
+  ctx.fillStyle = '#8e97b3';
+  ctx.font = '11px Inter, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  
+  const total = labels.length - 1;
+  for (let i = 0; i < labels.length; i++) {
+    const xx = x + (w * (i / total || 0));
+    
+    // Полное название для каждого второго месяца или если месяцев мало
+    if (labels.length <= 6 || i % 2 === 0) {
+      const parts = labels[i].split(' ');
+      const month = parts[0].slice(0, 3);
+      const year = parts[1] ? parts[1].slice(2, 4) : '';
+      
+      ctx.fillText(month, xx, y + h + 8);
+      if (year) {
+        ctx.fillStyle = 'rgba(142, 151, 179, 0.6)';
+        ctx.fillText(year, xx, y + h + 20);
+        ctx.fillStyle = '#8e97b3';
+      }
+    }
+  }
+  ctx.restore();
 }
 
     function drawGrid(x, y, w, h, rows, cols){
@@ -2879,28 +3412,32 @@ document.addEventListener('keydown', (e) => {
       if(state.end) $end.valueAsDate = state.end;
 
       recalcAll();
+  
+  // Инициализируем интерактивность графика
+  initChartInteractivity();  // <--- ДОБАВЬТЕ ЭТУ СТРОКУ ЗДЕСЬ
 
-      // Демо-данные если пусто
-      if(!state.start && !state.end && !$initial.value && !$target.value){
-        $initial.value = '150000';
-        $target.value = '30000';
-        const today = new Date();
-        const start = new Date(today.getFullYear(), today.getMonth(), 1);
-        const end = new Date(today.getFullYear(), today.getMonth() + 3, 0);
-        $start.valueAsDate = start;
-        $end.valueAsDate = end;
-        
-        // Демо обязательные платежи
-        state.mandatoryPayments = [
-          {name: 'Аренда квартиры', amount: 25000, dayOfMonth: 5},
-          {name: 'Интернет', amount: 800, dayOfMonth: 10}
-        ];
-        
-        recalcAll();
-      }
-    })();
+  // Демо-данные если пусто
+  if(!state.start && !state.end && !$initial.value && !$target.value){
+    $initial.value = '150000';
+    $target.value = '30000';
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    const end = new Date(today.getFullYear(), today.getMonth() + 3, 0);
+    $start.valueAsDate = start;
+    $end.valueAsDate = end;
+    
+    // Демо обязательные платежи
+    state.mandatoryPayments = [
+      {name: 'Аренда квартиры', amount: 25000, dayOfMonth: 5},
+      {name: 'Интернет', amount: 800, dayOfMonth: 10}
+    ];
+    
+    recalcAll();
+  }
+})();
   </script>
 </body>
 </html>
+
 
 
