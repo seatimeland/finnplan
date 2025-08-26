@@ -597,6 +597,47 @@
   background: rgba(255,138,138,.2);
   color: #ff8a8a;
 }
+
+    /* Стили для прогноза на основе истории */
+.dot.trend{background:#ff6b6b}
+.legend-item{
+  position: relative;
+}
+.legend-item .info-icon{
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(109,211,251,.2);
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  margin-left: 4px;
+  cursor: help;
+}
+.legend-item .tooltip{
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: var(--card);
+  border: 1px solid #27305a;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
+  margin-bottom: 4px;
+}
+.legend-item:hover .tooltip{
+  opacity: 1;
+  visibility: visible;
+}
     
     
 
@@ -704,10 +745,23 @@
         <div id="chartWrap">
           <canvas id="chart" width="1000" height="360"></canvas>
           <div class="legend">
-            <span class="pill"><span class="dot plan"></span> План по балансу</span>
-            <span class="pill"><span class="dot actual"></span> Фактический баланс</span>
-            <span class="pill"><span class="dot forecast"></span> Прогноз до конца</span>
-          </div>
+  <span class="pill legend-item">
+    <span class="dot plan"></span> План по балансу
+  </span>
+  <span class="pill legend-item">
+    <span class="dot actual"></span> Фактический баланс
+  </span>
+  <span class="pill legend-item">
+    <span class="dot forecast"></span> Прогноз равномерный
+    <span class="info-icon">?</span>
+    <span class="tooltip">Если будете тратить оставшуюся сумму равномерно</span>
+  </span>
+  <span class="pill legend-item">
+    <span class="dot trend"></span> Прогноз по истории
+    <span class="info-icon">?</span>
+    <span class="tooltip">На основе ваших реальных трат с учетом тренда</span>
+  </span>
+</div>
         </div>
       </section>
     </div>
@@ -1182,75 +1236,85 @@
     // ОСНОВНАЯ ЛОГИКА
     // ===========================
     function recalcAll(){
-      state.initial = Math.max(0, num($initial));
-      state.target = Math.max(0, num($target));
-      state.start = $start.value ? new Date($start.value) : null;
-      state.end = $end.value ? new Date($end.value) : null;
-      state.months = monthsDiffCeil(state.start, state.end);
-      $monthsInfo.textContent = `Месяцев: ${state.months || '—'}`;
+  state.initial = Math.max(0, num($initial));
+  state.target = Math.max(0, num($target));
+  state.start = $start.value ? new Date($start.value) : null;
+  state.end = $end.value ? new Date($end.value) : null;
+  state.months = monthsDiffCeil(state.start, state.end);
+  $monthsInfo.textContent = `Месяцев: ${state.months || '—'}`;
 
-      if(state.months <= 0 || !state.start || !state.end){
-        state.labels = [];
-        state.monthlyTransactions = [];
-        renderResults({availableTotal:null, monthlyLimit:null, mandatoryTotal:null, feasible:null, newMonthlyLimit:null, remTotal:null, sumActual:null, countSaved:null});
-        $monthsList.innerHTML = '';
-        drawChart([], [], [], []);
-        $recommendationsBlock.classList.add('hidden');
-        saveState();
-        return;
-      }
+  if(state.months <= 0 || !state.start || !state.end){
+    state.labels = [];
+    state.monthlyTransactions = [];
+    renderResults({availableTotal:null, monthlyLimit:null, mandatoryTotal:null, feasible:null, newMonthlyLimit:null, remTotal:null, sumActual:null, countSaved:null});
+    $monthsList.innerHTML = '';
+    drawChart([], [], [], [], []);
+    $recommendationsBlock.classList.add('hidden');
+    saveState();
+    return;
+  }
 
-      state.labels = monthLabels(state.start, state.months);
-      
-      // Инициализация транзакций по месяцам
-      if(state.monthlyTransactions.length !== state.months){
-        const next = new Array(state.months).fill(null).map((_, i) => 
-          state.monthlyTransactions[i] || []
-        );
-        state.monthlyTransactions = next;
-      }
+  state.labels = monthLabels(state.start, state.months);
+  
+  // Инициализация транзакций по месяцам
+  if(state.monthlyTransactions.length !== state.months){
+    const next = new Array(state.months).fill(null).map((_, i) => 
+      state.monthlyTransactions[i] || []
+    );
+    state.monthlyTransactions = next;
+  }
 
-      // Расчёты с учетом обязательных платежей
-      const mandatoryTotal = calculateTotalMandatory();
-      const availableTotal = (state.initial - state.target) - mandatoryTotal;
-      const monthlyLimit = availableTotal / state.months;
-      
-      // Подсчёт фактических трат
-      const monthlyActuals = state.monthlyTransactions.map(transactions => 
-        transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
-      );
-      const countSaved = monthlyActuals.filter(v => v > 0).length;
-      const sumActual = monthlyActuals.reduce((sum, v) => sum + v, 0);
-      
-      const remTotal = availableTotal - sumActual;
-      const remainingMonths = Math.max(0, state.months - countSaved);
-      const newMonthlyLimit = remainingMonths > 0 ? (remTotal / remainingMonths) : 0;
-      const feasible = monthlyLimit >= 0 && remTotal >= 0;
+  // Расчёты с учетом обязательных платежей
+  const mandatoryTotal = calculateTotalMandatory();
+  const availableTotal = (state.initial - state.target) - mandatoryTotal;
+  const monthlyLimit = availableTotal / state.months;
+  
+  // Подсчёт фактических трат
+  const monthlyActuals = state.monthlyTransactions.map(transactions => 
+    transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
+  );
+  const countSaved = monthlyActuals.filter(v => v > 0).length;
+  const sumActual = monthlyActuals.reduce((sum, v) => sum + v, 0);
+  
+  const remTotal = availableTotal - sumActual;
+  const remainingMonths = Math.max(0, state.months - countSaved);
+  const newMonthlyLimit = remainingMonths > 0 ? (remTotal / remainingMonths) : 0;
+  const feasible = monthlyLimit >= 0 && remTotal >= 0;
 
-      renderResults({
-        availableTotal,
-        monthlyLimit,
-        mandatoryTotal,
-        feasible,
-        newMonthlyLimit,
-        remTotal,
-        sumActual,
-        countSaved
-      });
+  renderResults({
+    availableTotal,
+    monthlyLimit,
+    mandatoryTotal,
+    feasible,
+    newMonthlyLimit,
+    remTotal,
+    sumActual,
+    countSaved
+  });
 
-      renderMandatoryPayments();
-      renderMonthsList(monthlyLimit, newMonthlyLimit);
-      renderRecommendations(newMonthlyLimit);
+  renderMandatoryPayments();
+  renderMonthsList(monthlyLimit, newMonthlyLimit);
+  renderRecommendations(newMonthlyLimit);
 
-      // График
-      const plannedBalances = makePlannedBalances(state.initial, state.target, state.months);
-      const { actualBalances, forecastBalances } = makeActualAndForecastBalances(
-        plannedBalances, state.initial, monthlyActuals, newMonthlyLimit
-      );
-      drawChart(state.labels, plannedBalances, actualBalances, forecastBalances);
+  // График
+  const plannedBalances = makePlannedBalances(state.initial, state.target, state.months);
+  const { actualBalances, forecastBalances } = makeActualAndForecastBalances(
+    plannedBalances, state.initial, monthlyActuals, newMonthlyLimit
+  );
+  
+  // Создаем массив обязательных платежей по месяцам для прогноза
+  const mandatoryByMonth = [];
+  for(let i = 0; i < state.months; i++){
+    mandatoryByMonth.push(calculateMandatoryForMonth(i));
+  }
+  
+  // Добавляем прогноз на основе истории
+  const trendForecastBalances = makeTrendForecastBalances(state.initial, monthlyActuals, mandatoryByMonth);
+  
+  drawChart(state.labels, plannedBalances, actualBalances, forecastBalances, trendForecastBalances);
 
-      saveState();
-    }
+  saveState();
+}
 
     function renderMandatoryPayments(){
       if(state.mandatoryPayments.length === 0){
@@ -1341,6 +1405,78 @@
       
       return { actualBalances: actual, forecastBalances: forecast };
     }
+
+    function makeTrendForecastBalances(initial, monthlyActuals, mandatoryByMonth) {
+  const forecast = [];
+  let currentBalance = initial;
+  
+  // Находим последний месяц с тратами
+  let lastMonthWithExpenses = -1;
+  for(let i = 0; i < monthlyActuals.length; i++){
+    if(monthlyActuals[i] > 0){
+      lastMonthWithExpenses = i;
+      currentBalance = currentBalance - monthlyActuals[i] - (mandatoryByMonth[i] || 0);
+    }
+  }
+  
+  // Если нет истории трат, возвращаем пустой массив
+  if(lastMonthWithExpenses < 0) return [];
+  
+  // Начинаем прогноз с текущего баланса
+  forecast.push(currentBalance);
+  
+  // Анализируем паттерны трат
+  const monthsWithData = lastMonthWithExpenses + 1;
+  const actualSpending = monthlyActuals.slice(0, monthsWithData);
+  
+  // Рассчитываем статистику
+  const avgSpending = actualSpending.reduce((sum, v) => sum + v, 0) / monthsWithData;
+  
+  // Определяем тренд (рост/снижение трат)
+  let trend = 0;
+  if(monthsWithData >= 2) {
+    const firstHalf = actualSpending.slice(0, Math.floor(monthsWithData/2));
+    const secondHalf = actualSpending.slice(Math.floor(monthsWithData/2));
+    const avgFirst = firstHalf.reduce((sum, v) => sum + v, 0) / firstHalf.length;
+    const avgSecond = secondHalf.reduce((sum, v) => sum + v, 0) / secondHalf.length;
+    trend = (avgSecond - avgFirst) / avgFirst; // процент изменения
+  }
+  
+  // Особая логика для текущего месяца
+  const now = new Date();
+  const currentMonthIndex = state.start ? 
+    (now.getFullYear() - state.start.getFullYear()) * 12 + 
+    (now.getMonth() - state.start.getMonth()) : -1;
+  
+  let projectedMonthlySpending = avgSpending;
+  
+  // Если мы в текущем месяце и есть траты, экстраполируем их
+  if(currentMonthIndex >= 0 && currentMonthIndex < monthlyActuals.length && 
+     monthlyActuals[currentMonthIndex] > 0) {
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const dailyRate = monthlyActuals[currentMonthIndex] / dayOfMonth;
+    const projectedCurrentMonth = dailyRate * daysInMonth;
+    
+    // Взвешенное среднее между историческим средним и проекцией текущего месяца
+    projectedMonthlySpending = avgSpending * 0.4 + projectedCurrentMonth * 0.6;
+  }
+  
+  // Строим прогноз с учетом тренда
+  for(let i = lastMonthWithExpenses + 1; i < state.months; i++){
+    // Применяем тренд с затуханием (чем дальше прогноз, тем меньше влияние тренда)
+    const trendFactor = Math.max(0, 1 - (i - lastMonthWithExpenses) * 0.1);
+    const trendAdjustment = 1 + (trend * trendFactor);
+    
+    const predictedSpending = projectedMonthlySpending * trendAdjustment;
+    const mandatoryForMonth = mandatoryByMonth[i] || 0;
+    
+    currentBalance = currentBalance - predictedSpending - mandatoryForMonth;
+    forecast.push(currentBalance);
+  }
+  
+  return forecast;
+}
 
 
     function renderResults(data){
@@ -1906,95 +2042,125 @@
     // ===========================
     // ГРАФИК
     // ===========================
-    function drawChart(labels, planned, actual, forecast){
-      const w = $chart.width, h = $chart.height;
-      ctx.clearRect(0,0,w,h);
+    function drawChart(labels, planned, actual, forecast, trendForecast){
+  const w = $chart.width, h = $chart.height;
+  ctx.clearRect(0,0,w,h);
 
-      const padL = 60, padR = 16, padT = 14, padB = 38;
-      const gw = w - padL - padR;
-      const gh = h - padT - padB;
+  const padL = 60, padR = 16, padT = 14, padB = 38;
+  const gw = w - padL - padR;
+  const gh = h - padT - padB;
 
-      const ys = []
-        .concat(Array.isArray(planned)?planned:[])
-        .concat(Array.isArray(actual)?actual:[])
-        .concat(Array.isArray(forecast)?forecast:[])
-        .filter(Number.isFinite);
+  const ys = []
+    .concat(Array.isArray(planned)?planned:[])
+    .concat(Array.isArray(actual)?actual:[])
+    .concat(Array.isArray(forecast)?forecast:[])
+    .concat(Array.isArray(trendForecast)?trendForecast:[])
+    .filter(Number.isFinite);
 
-      if(ys.length === 0){
-        drawGrid(padL, padT, gw, gh, 4, 4);
-        return;
-      }
+  if(ys.length === 0){
+    drawGrid(padL, padT, gw, gh, 4, 4);
+    return;
+  }
 
-      let yMin = Math.min(...ys), yMax = Math.max(...ys);
-      const pad = Math.max(1000, (yMax - yMin)*0.08);
-      yMin -= pad; yMax += pad;
-      if(yMax === yMin){ yMax += 1; yMin -= 1; }
+  let yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const pad = Math.max(1000, (yMax - yMin)*0.08);
+  yMin -= pad; yMax += pad;
+  if(yMax === yMin){ yMax += 1; yMin -= 1; }
 
-      drawGrid(padL, padT, gw, gh, 5, labels.length || 4);
-      drawYTicks(padL, padT, gw, gh, yMin, yMax, 5);
-      drawXLabels(labels, padL, padT, gw, gh);
+  drawGrid(padL, padT, gw, gh, 5, labels.length || 4);
+  drawYTicks(padL, padT, gw, gh, yMin, yMax, 5);
+  drawXLabels(labels, padL, padT, gw, gh);
 
-      const X = (i, totalPoints)=>{
-        const t = totalPoints === 0 ? 0 : i / totalPoints;
-        return padL + t * gw;
-      };
-      const Y = (val)=>{
-        const t = (val - yMin) / (yMax - yMin);
-        return padT + (1 - t) * gh;
-      };
+  const X = (i, totalPoints)=>{
+    const t = totalPoints === 0 ? 0 : i / totalPoints;
+    return padL + t * gw;
+  };
+  const Y = (val)=>{
+    const t = (val - yMin) / (yMax - yMin);
+    return padT + (1 - t) * gh;
+  };
 
-      // План
-      if(planned && planned.length){
-        ctx.lineWidth = 2;
-        ctx.setLineDash([]);
-        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line1').trim();
-        ctx.beginPath();
-        for(let i=0;i<planned.length;i++){
-          const x = X(i, planned.length-1), y = Y(planned[i]);
-          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-        }
-        ctx.stroke();
-      }
-
-      // Фактический
-      if(actual && actual.length){
-        ctx.lineWidth = 3;
-        ctx.setLineDash([]);
-        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line2').trim();
-        ctx.beginPath();
-        for(let i=0;i<actual.length;i++){
-          const x = X(i, (planned?.length||1)-1), y = Y(actual[i]);
-          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-        }
-        ctx.stroke();
-        
-        // Точки
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--line2').trim();
-        for(let i=0;i<actual.length;i++){
-          const x = X(i, (planned?.length||1)-1), y = Y(actual[i]);
-          ctx.beginPath();
-          ctx.arc(x, y, 4, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      // Прогноз
-      if(forecast && forecast.length){
-        ctx.lineWidth = 2;
-        ctx.setLineDash([8,4]);
-        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line3').trim();
-        ctx.beginPath();
-        const totalPoints = (planned?.length||1)-1;
-        const startIndex = (actual?.length||1)-1;
-        for(let i=0;i<forecast.length;i++){
-          const x = X(startIndex + i, totalPoints);
-          const y = Y(forecast[i]);
-          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-        }
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+  // План
+  if(planned && planned.length){
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line1').trim();
+    ctx.beginPath();
+    for(let i=0;i<planned.length;i++){
+      const x = X(i, planned.length-1), y = Y(planned[i]);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     }
+    ctx.stroke();
+  }
+
+  // Фактический
+  if(actual && actual.length){
+    ctx.lineWidth = 3;
+    ctx.setLineDash([]);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line2').trim();
+    ctx.beginPath();
+    for(let i=0;i<actual.length;i++){
+      const x = X(i, (planned?.length||1)-1), y = Y(actual[i]);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    
+    // Точки
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--line2').trim();
+    for(let i=0;i<actual.length;i++){
+      const x = X(i, (planned?.length||1)-1), y = Y(actual[i]);
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Прогноз равномерный
+  if(forecast && forecast.length){
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8,4]);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line3').trim();
+    ctx.beginPath();
+    const totalPoints = (planned?.length||1)-1;
+    const startIndex = (actual?.length||1)-1;
+    for(let i=0;i<forecast.length;i++){
+      const x = X(startIndex + i, totalPoints);
+      const y = Y(forecast[i]);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Прогноз на основе истории (новая линия)
+  if(trendForecast && trendForecast.length > 1){
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4,4]);
+    ctx.strokeStyle = '#ff6b6b';
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    const totalPoints = (planned?.length||1)-1;
+    const startIndex = (actual?.length||1)-1;
+    for(let i=0;i<trendForecast.length;i++){
+      const x = X(startIndex + i, totalPoints);
+      const y = Y(trendForecast[i]);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    
+    // Точка в конце прогноза
+    if(trendForecast.length > 0){
+      const lastX = X(startIndex + trendForecast.length - 1, totalPoints);
+      const lastY = Y(trendForecast[trendForecast.length - 1]);
+      ctx.fillStyle = '#ff6b6b';
+      ctx.beginPath();
+      ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
 
     function drawGrid(x, y, w, h, rows, cols){
       ctx.save();
@@ -2143,3 +2309,4 @@
   </script>
 </body>
 </html>
+
