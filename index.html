@@ -1591,12 +1591,54 @@
   const forecast = [];
   let currentBalance = initial;
   
+  // Определяем текущую дату и текущий месяц в плане
+  const now = new Date();
+  const currentMonthIndex = state.start ? 
+    (now.getFullYear() - state.start.getFullYear()) * 12 + 
+    (now.getMonth() - state.start.getMonth()) : -1;
+  
   // Находим последний месяц с тратами
   let lastMonthWithExpenses = -1;
+  let completedMonths = []; // Массив полностью завершенных месяцев
+  let currentMonthData = null; // Данные по текущему незавершенному месяцу
+  
   for(let i = 0; i < monthlyActuals.length; i++){
     if(monthlyActuals[i] > 0){
       lastMonthWithExpenses = i;
       currentBalance = currentBalance - monthlyActuals[i] - (mandatoryByMonth[i] || 0);
+      
+      // Определяем, завершен ли месяц
+      if(i < currentMonthIndex || (i === currentMonthIndex && now > state.end)) {
+        // Месяц полностью прошел
+        completedMonths.push({
+          index: i,
+          spending: monthlyActuals[i],
+          days: 30 // Примерное количество дней в месяце
+        });
+      } else if(i === currentMonthIndex) {
+        // Это текущий месяц, он не завершен
+        const monthStart = new Date(state.start.getFullYear(), state.start.getMonth() + i, 1);
+        const monthEnd = new Date(state.start.getFullYear(), state.start.getMonth() + i + 1, 0);
+        
+        // Определяем сколько дней прошло в этом месяце
+        let startDate = monthStart;
+        if(i === 0 && state.start > monthStart) {
+          startDate = state.start; // Для первого месяца учитываем дату начала плана
+        }
+        
+        const endDate = now < monthEnd ? now : monthEnd;
+        const daysElapsed = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
+        const totalDaysInMonth = Math.floor((monthEnd - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        
+        currentMonthData = {
+          index: i,
+          spending: monthlyActuals[i],
+          daysElapsed: daysElapsed,
+          totalDays: totalDaysInMonth,
+          dailyRate: monthlyActuals[i] / daysElapsed,
+          projectedMonthTotal: (monthlyActuals[i] / daysElapsed) * totalDaysInMonth
+        };
+      }
     }
   }
   
@@ -1606,50 +1648,65 @@
   // Начинаем прогноз с текущего баланса
   forecast.push(currentBalance);
   
-  // Анализируем паттерны трат
-  const monthsWithData = lastMonthWithExpenses + 1;
-  const actualSpending = monthlyActuals.slice(0, monthsWithData);
+  // Рассчитываем среднедневную трату на основе ДНЕЙ, а не месяцев
+  let totalDaysWithData = 0;
+  let totalSpending = 0;
   
-  // Рассчитываем статистику
-  const avgSpending = actualSpending.reduce((sum, v) => sum + v, 0) / monthsWithData;
+  // Учитываем завершенные месяцы
+  completedMonths.forEach(month => {
+    totalDaysWithData += month.days;
+    totalSpending += month.spending;
+  });
   
-  // Определяем тренд (рост/снижение трат)
-  let trend = 0;
-  if(monthsWithData >= 2) {
-    const firstHalf = actualSpending.slice(0, Math.floor(monthsWithData/2));
-    const secondHalf = actualSpending.slice(Math.floor(monthsWithData/2));
-    const avgFirst = firstHalf.reduce((sum, v) => sum + v, 0) / firstHalf.length;
-    const avgSecond = secondHalf.reduce((sum, v) => sum + v, 0) / secondHalf.length;
-    trend = (avgSecond - avgFirst) / avgFirst; // процент изменения
+  // Учитываем текущий незавершенный месяц
+  if(currentMonthData) {
+    totalDaysWithData += currentMonthData.daysElapsed;
+    totalSpending += currentMonthData.spending;
   }
   
-  // Особая логика для текущего месяца
-  const now = new Date();
-  const currentMonthIndex = state.start ? 
-    (now.getFullYear() - state.start.getFullYear()) * 12 + 
-    (now.getMonth() - state.start.getMonth()) : -1;
+  // Средняя трата в день на основе фактических данных
+  const avgDailySpending = totalDaysWithData > 0 ? totalSpending / totalDaysWithData : 0;
   
-  let projectedMonthlySpending = avgSpending;
+  // Если есть данные текущего месяца, используем их для более точного прогноза
+  let projectedMonthlySpending = avgDailySpending * 30; // Базовый прогноз
   
-  // Если мы в текущем месяце и есть траты, экстраполируем их
-  if(currentMonthIndex >= 0 && currentMonthIndex < monthlyActuals.length && 
-     monthlyActuals[currentMonthIndex] > 0) {
-    const dayOfMonth = now.getDate();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const dailyRate = monthlyActuals[currentMonthIndex] / dayOfMonth;
-    const projectedCurrentMonth = dailyRate * daysInMonth;
+  if(currentMonthData && currentMonthData.daysElapsed >= 3) {
+    // Если в текущем месяце прошло хотя бы 3 дня, придаем больший вес его данным
+    const currentMonthWeight = Math.min(0.7, currentMonthData.daysElapsed / 30);
+    const historicalWeight = 1 - currentMonthWeight;
     
-    // Взвешенное среднее между историческим средним и проекцией текущего месяца
-    projectedMonthlySpending = avgSpending * 0.4 + projectedCurrentMonth * 0.6;
+    projectedMonthlySpending = 
+      (currentMonthData.dailyRate * 30 * currentMonthWeight) + 
+      (avgDailySpending * 30 * historicalWeight);
   }
   
-  // Строим прогноз с учетом тренда
+  // Определяем тренд (если есть достаточно данных)
+  let trendFactor = 1;
+  if(completedMonths.length >= 2) {
+    const firstHalfAvg = completedMonths.slice(0, Math.floor(completedMonths.length/2))
+      .reduce((sum, m) => sum + m.spending/m.days, 0) / Math.floor(completedMonths.length/2);
+    const secondHalfAvg = completedMonths.slice(Math.floor(completedMonths.length/2))
+      .reduce((sum, m) => sum + m.spending/m.days, 0) / (completedMonths.length - Math.floor(completedMonths.length/2));
+    
+    trendFactor = secondHalfAvg / firstHalfAvg;
+  } else if(currentMonthData && currentMonthData.daysElapsed >= 7) {
+    // Если есть только текущий месяц, но прошла хотя бы неделя
+    // Сравниваем с рекомендуемым лимитом
+    const recommendedDaily = (initial - state.target - calculateTotalMandatory()) / 
+                            (state.months * 30);
+    if(recommendedDaily > 0) {
+      trendFactor = currentMonthData.dailyRate / recommendedDaily;
+    }
+  }
+  
+  // Строим прогноз для оставшихся месяцев
   for(let i = lastMonthWithExpenses + 1; i < state.months; i++){
-    // Применяем тренд с затуханием (чем дальше прогноз, тем меньше влияние тренда)
-    const trendFactor = Math.max(0, 1 - (i - lastMonthWithExpenses) * 0.1);
-    const trendAdjustment = 1 + (trend * trendFactor);
+    // Применяем тренд с затуханием
+    const monthsAhead = i - lastMonthWithExpenses;
+    const trendDamping = Math.pow(0.95, monthsAhead); // Тренд затухает на 5% каждый месяц
+    const adjustedTrend = 1 + (trendFactor - 1) * trendDamping;
     
-    const predictedSpending = projectedMonthlySpending * trendAdjustment;
+    const predictedSpending = projectedMonthlySpending * adjustedTrend;
     const mandatoryForMonth = mandatoryByMonth[i] || 0;
     
     currentBalance = currentBalance - predictedSpending - mandatoryForMonth;
@@ -1665,18 +1722,45 @@
 function calculateForecastDetails() {
   if (!state.start || !state.end || state.months <= 0) return null;
   
+  const now = new Date();
+  const currentMonthIndex = (now.getFullYear() - state.start.getFullYear()) * 12 + 
+    (now.getMonth() - state.start.getMonth());
+  
   // Получаем фактические траты
   const monthlyActuals = state.monthlyTransactions.map(transactions => 
     transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
   );
   
-  // Находим последний месяц с тратами
+  // Анализируем данные с учетом дней
+  let totalDaysWithData = 0;
+  let totalSpending = 0;
   let lastMonthWithExpenses = -1;
   let totalSpentSoFar = 0;
+  
   for(let i = 0; i < monthlyActuals.length; i++){
     if(monthlyActuals[i] > 0){
       lastMonthWithExpenses = i;
       totalSpentSoFar += monthlyActuals[i] + calculateMandatoryForMonth(i);
+      
+      // Рассчитываем количество дней для этого месяца
+      const monthStart = new Date(state.start.getFullYear(), state.start.getMonth() + i, 1);
+      const monthEnd = new Date(state.start.getFullYear(), state.start.getMonth() + i + 1, 0);
+      
+      let startDate = monthStart;
+      if(i === 0 && state.start > monthStart) {
+        startDate = state.start;
+      }
+      
+      let endDate = monthEnd;
+      if(i === currentMonthIndex) {
+        // Для текущего месяца считаем только прошедшие дни
+        endDate = now < monthEnd ? now : monthEnd;
+      }
+      
+      const daysInPeriod = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
+      
+      totalDaysWithData += daysInPeriod;
+      totalSpending += monthlyActuals[i];
     }
   }
   
@@ -1694,7 +1778,8 @@ function calculateForecastDetails() {
         totalSpending: availableTotal,
         completionDate: state.end,
         runOutDate: null,
-        remainingMonths: state.months
+        remainingMonths: state.months,
+        daysAnalyzed: 0
       },
       trend: null
     };
@@ -1717,34 +1802,18 @@ function calculateForecastDetails() {
   const uniformFinalBalance = state.initial - totalSpentSoFar - 
     (newMonthlyLimit * remainingMonths) - futureMandatory;
   
-  // Расчет для прогноза по истории
-  const monthsWithData = lastMonthWithExpenses + 1;
-  const actualSpending = monthlyActuals.slice(0, monthsWithData);
-  const avgSpending = actualSpending.reduce((sum, v) => sum + v, 0) / monthsWithData;
+  // Расчет для прогноза по истории на основе ДНЕЙ
+  const avgDailySpending = totalDaysWithData > 0 ? totalSpending / totalDaysWithData : 0;
+  const projectedMonthlySpending = avgDailySpending * 30;
   
   // Определяем тренд
   let trendGrowth = 0;
-  if(monthsWithData >= 2) {
-    const firstHalf = actualSpending.slice(0, Math.floor(monthsWithData/2));
-    const secondHalf = actualSpending.slice(Math.floor(monthsWithData/2));
-    const avgFirst = firstHalf.reduce((sum, v) => sum + v, 0) / firstHalf.length;
-    const avgSecond = secondHalf.reduce((sum, v) => sum + v, 0) / secondHalf.length;
-    trendGrowth = (avgSecond - avgFirst) / avgFirst;
-  }
-  
-  // Экстраполяция для текущего месяца
-  const now = new Date();
-  const currentMonthIndex = (now.getFullYear() - state.start.getFullYear()) * 12 + 
-    (now.getMonth() - state.start.getMonth());
-  
-  let projectedMonthlySpending = avgSpending;
-  if(currentMonthIndex >= 0 && currentMonthIndex < monthlyActuals.length && 
-     monthlyActuals[currentMonthIndex] > 0) {
-    const dayOfMonth = now.getDate();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const dailyRate = monthlyActuals[currentMonthIndex] / dayOfMonth;
-    const projectedCurrentMonth = dailyRate * daysInMonth;
-    projectedMonthlySpending = avgSpending * 0.4 + projectedCurrentMonth * 0.6;
+  if(totalDaysWithData >= 7) {
+    // Сравниваем с рекомендуемым дневным лимитом
+    const recommendedDaily = availableTotal / (state.months * 30);
+    if(recommendedDaily > 0) {
+      trendGrowth = (avgDailySpending - recommendedDaily) / recommendedDaily;
+    }
   }
   
   // Прогнозируем баланс по истории
@@ -1752,12 +1821,10 @@ function calculateForecastDetails() {
   let runOutMonth = -1;
   
   for(let i = lastMonthWithExpenses + 1; i < state.months; i++){
-    const trendFactor = Math.max(0, 1 - (i - lastMonthWithExpenses) * 0.1);
-    const trendAdjustment = 1 + (trendGrowth * trendFactor);
-    const predictedSpending = projectedMonthlySpending * trendAdjustment;
+    const monthPredictedSpending = projectedMonthlySpending * (1 + trendGrowth * Math.pow(0.95, i - lastMonthWithExpenses));
     const mandatoryForMonth = calculateMandatoryForMonth(i);
     
-    trendBalance -= (predictedSpending + mandatoryForMonth);
+    trendBalance -= (monthPredictedSpending + mandatoryForMonth);
     
     if(trendBalance < state.target && runOutMonth === -1){
       runOutMonth = i;
@@ -1767,7 +1834,14 @@ function calculateForecastDetails() {
   // Рассчитываем дату исчерпания средств
   let runOutDate = null;
   if(runOutMonth >= 0){
-    runOutDate = new Date(state.start.getFullYear(), state.start.getMonth() + runOutMonth, 15);
+    const daysPerMonth = 30;
+    const remainingInCurrentMonth = trendBalance + projectedMonthlySpending + calculateMandatoryForMonth(runOutMonth - 1);
+    const dailyRate = (projectedMonthlySpending + calculateMandatoryForMonth(runOutMonth)) / daysPerMonth;
+    const daysUntilRunOut = dailyRate > 0 ? remainingInCurrentMonth / dailyRate : 30;
+    
+    runOutDate = new Date(state.start.getFullYear(), 
+                          state.start.getMonth() + runOutMonth - 1, 
+                          Math.max(1, Math.min(30, Math.floor(daysUntilRunOut))));
   }
   
   return {
@@ -1778,18 +1852,21 @@ function calculateForecastDetails() {
       totalSpending: remTotal,
       completionDate: state.end,
       runOutDate: uniformFinalBalance < state.target ? runOutDate : null,
-      remainingMonths: remainingMonths
+      remainingMonths: remainingMonths,
+      daysAnalyzed: totalDaysWithData
     },
     trend: {
       finalBalance: trendBalance,
       willComplete: trendBalance >= state.target,
-      avgSpending: avgSpending,
+      avgDailySpending: avgDailySpending,
+      avgSpending: projectedMonthlySpending,
       projectedSpending: projectedMonthlySpending,
       trendGrowth: trendGrowth,
-      totalSpending: (projectedMonthlySpending * remainingMonths * (1 + trendGrowth/2)) + futureMandatory,
+      totalSpending: (projectedMonthlySpending * remainingMonths) + futureMandatory,
       completionDate: trendBalance >= state.target ? state.end : null,
       runOutDate: runOutDate,
-      monthsWithData: monthsWithData
+      daysWithData: totalDaysWithData,
+      percentOfRecommended: availableTotal > 0 ? (avgDailySpending / (availableTotal / (state.months * 30))) * 100 : 0
     }
   };
 }
@@ -1895,17 +1972,24 @@ function renderTrendForecast(data) {
   const statusText = data.willComplete ? 'Цель достижима' : 'Цель под угрозой';
   const statusIcon = data.willComplete ? '✓' : '⚠️';
   const trendIcon = data.trendGrowth > 0.05 ? '📈' : data.trendGrowth < -0.05 ? '📉' : '➡️';
-  const trendText = data.trendGrowth > 0.05 ? 'растут' : data.trendGrowth < -0.05 ? 'снижаются' : 'стабильны';
+  const trendText = data.trendGrowth > 0.05 ? 'выше плана' : data.trendGrowth < -0.05 ? 'ниже плана' : 'по плану';
+  
+  // Определяем период анализа
+  const daysText = data.daysWithData === 1 ? 'дня' : 
+                   data.daysWithData < 5 ? 'дней' : 'дней';
+  const periodText = data.daysWithData < 30 ? 
+    `${data.daysWithData} ${daysText}` : 
+    `${Math.floor(data.daysWithData / 30)} мес. ${data.daysWithData % 30} дн.`;
   
   let html = `
     <div class="forecast-info-grid">
       <div class="forecast-card ${statusClass}">
-        <div class="forecast-label">Прогноз на основе ${data.monthsWithData} ${data.monthsWithData === 1 ? 'месяца' : 'месяцев'} данных</div>
+        <div class="forecast-label">Прогноз на основе ${periodText} фактических данных</div>
         <div class="forecast-value">${statusIcon} ${statusText}</div>
         <div class="forecast-description">
           ${data.willComplete 
-            ? `Если продолжите тратить как обычно, достигнете цели с балансом ${fmt0(data.finalBalance)}` 
-            : `Текущий темп трат приведет к балансу ${fmt0(data.finalBalance)}, что ниже цели`}
+            ? `При текущем темпе трат (${Math.round(data.percentOfRecommended)}% от рекомендуемого) вы достигнете цели` 
+            : `Вы тратите ${Math.round(data.percentOfRecommended)}% от рекомендуемого лимита, что не позволит достичь цели`}
         </div>
       </div>
       
@@ -1914,18 +1998,19 @@ function renderTrendForecast(data) {
         <div class="forecast-value">${trendIcon} Траты ${trendText}</div>
         <div class="forecast-comparison">
           <div class="comparison-item">
-            <div class="comparison-label">Средняя трата/мес</div>
-            <div class="comparison-value">${fmt0(data.avgSpending)}</div>
+            <div class="comparison-label">Средняя в день</div>
+            <div class="comparison-value">${fmt0(data.avgDailySpending)}</div>
           </div>
           <div class="comparison-item">
             <div class="comparison-label">Прогноз на месяц</div>
             <div class="comparison-value">${fmt0(data.projectedSpending)}</div>
           </div>
         </div>
-        ${data.trendGrowth !== 0 ? `
+        ${data.percentOfRecommended !== 100 ? `
           <div class="forecast-description">
-            Тренд: ${data.trendGrowth > 0 ? '+' : ''}${(data.trendGrowth * 100).toFixed(1)}% 
-            ${data.trendGrowth > 0 ? '(траты увеличиваются)' : '(траты уменьшаются)'}
+            Вы тратите ${data.percentOfRecommended > 100 ? 'на' : 'на'} 
+            ${Math.abs(Math.round(data.percentOfRecommended - 100))}% 
+            ${data.percentOfRecommended > 100 ? 'больше' : 'меньше'} рекомендуемого
           </div>
         ` : ''}
       </div>
@@ -1950,9 +2035,10 @@ function renderTrendForecast(data) {
         <div class="forecast-alert-icon">🔴</div>
         <div class="forecast-alert-text">
           <strong>Критическое предупреждение!</strong><br>
-          При сохранении текущего темпа трат, вы достигнете минимального баланса (${fmt0(state.target)}) уже 
+          При сохранении текущего темпа трат (${fmt0(data.avgDailySpending)}/день), 
+          вы достигнете минимального баланса (${fmt0(state.target)}) уже 
           <strong>${data.runOutDate.toLocaleDateString('ru-RU')}</strong>.<br>
-          Это на ${Math.floor((state.end - data.runOutDate) / (1000 * 60 * 60 * 24))} дней раньше запланированного срока.
+          Снизьте траты на ${Math.round(data.percentOfRecommended - 100)}% чтобы уложиться в план.
         </div>
       </div>
     `;
@@ -1963,8 +2049,9 @@ function renderTrendForecast(data) {
         <div class="forecast-alert-icon">💡</div>
         <div class="forecast-alert-text">
           <strong>Хорошие новости!</strong><br>
-          Ваш текущий темп трат позволит успешно достичь цели.<br>
+          Ваш текущий темп трат (${fmt0(data.avgDailySpending)}/день) позволит успешно достичь цели.<br>
           До конца периода осталось ${daysLeft} ${daysLeft === 1 ? 'день' : daysLeft < 5 ? 'дня' : 'дней'}.
+          ${data.percentOfRecommended < 80 ? '<br>У вас даже есть запас для дополнительных трат!' : ''}
         </div>
       </div>
     `;
@@ -2815,4 +2902,5 @@ document.addEventListener('keydown', (e) => {
   </script>
 </body>
 </html>
+
 
