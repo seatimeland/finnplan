@@ -550,6 +550,55 @@
     .month-toggle-btn.collapsed {
       transform: rotate(-90deg);
     }
+    /* Стили для индикации средней траты */
+.daily-avg-good {
+  background: linear-gradient(135deg, rgba(134,239,172,.12), rgba(74,222,128,.12)) !important;
+  border-color: #4ade80 !important;
+}
+
+.daily-avg-normal {
+  background: linear-gradient(135deg, rgba(109,211,251,.08), rgba(167,139,250,.08)) !important;
+  border-color: #4338ca !important;
+}
+
+.daily-avg-bad {
+  background: linear-gradient(135deg, rgba(255,138,138,.12), rgba(255,68,68,.12)) !important;
+  border-color: #ff4444 !important;
+}
+
+.daily-avg-value.good {
+  color: #4ade80 !important;
+}
+
+.daily-avg-value.bad {
+  color: #ff8a8a !important;
+}
+
+.progress-indicator {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.progress-indicator.good {
+  background: rgba(134,239,172,.2);
+  color: #4ade80;
+}
+
+.progress-indicator.normal {
+  background: rgba(109,211,251,.2);
+  color: var(--accent);
+}
+
+.progress-indicator.bad {
+  background: rgba(255,138,138,.2);
+  color: #ff8a8a;
+}
+    
+    
 
   </style>
 </head>
@@ -1002,59 +1051,74 @@
     // ===========================
     // РАСЧЕТ СРЕДНЕЙ ТРАТЫ ЗА ДЕНЬ
     // ===========================
-    function calculateDailyAverage(monthIndex) {
-      if (!state.start || !state.end) return null;
-      if (!isCurrentMonth(monthIndex)) return null;
-      
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
-      // Границы месяца
-      const monthStart = new Date(state.start.getFullYear(), state.start.getMonth() + monthIndex, 1);
-      const monthEnd = new Date(state.start.getFullYear(), state.start.getMonth() + monthIndex + 1, 0);
-      
-      // Определяем начало отсчета
-      let countStart;
-      if (monthIndex === 0) {
-        // Для первого месяца берем дату начала плана
-        countStart = new Date(state.start.getFullYear(), state.start.getMonth(), state.start.getDate());
-      } else {
-        // Для остальных месяцев - первое число
-        countStart = monthStart;
-      }
-      
-      // Определяем конец отсчета (минимум из: сегодня, конец месяца, конец плана)
-      let countEnd = today;
-      if (monthEnd < countEnd) countEnd = monthEnd;
-      if (state.end < countEnd) countEnd = state.end;
-      
-      // Проверяем, что интервал валидный
-      if (countEnd < countStart) return null;
-      
-      // Считаем количество дней (включительно)
-      const daysCount = Math.floor((countEnd - countStart) / (1000 * 60 * 60 * 24)) + 1;
-      
-      // Получаем транзакции текущего месяца
-      const transactions = state.monthlyTransactions[monthIndex] || [];
-      
-      // Считаем сумму трат за период
-      let totalSpent = 0;
-      transactions.forEach(t => {
-        const transDate = new Date(t.date);
-        const transDateOnly = new Date(transDate.getFullYear(), transDate.getMonth(), transDate.getDate());
-        if (transDateOnly >= countStart && transDateOnly <= countEnd) {
-          totalSpent += t.amount || 0;
-        }
-      });
-      
-      const dailyAvg = totalSpent / daysCount;
-      
-      return {
-        average: dailyAvg,
-        days: daysCount,
-        total: totalSpent
-      };
+    function calculateDailyAverage(monthIndex, dynamicLimit) {
+  if (!state.start || !state.end) return null;
+  if (!isCurrentMonth(monthIndex)) return null;
+  
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  // Границы месяца
+  const monthStart = new Date(state.start.getFullYear(), state.start.getMonth() + monthIndex, 1);
+  const monthEnd = new Date(state.start.getFullYear(), state.start.getMonth() + monthIndex + 1, 0);
+  
+  // Определяем начало отсчета
+  let countStart;
+  if (monthIndex === 0) {
+    // Для первого месяца берем дату начала плана
+    countStart = new Date(state.start.getFullYear(), state.start.getMonth(), state.start.getDate());
+  } else {
+    // Для остальных месяцев - первое число
+    countStart = monthStart;
+  }
+  
+  // Определяем конец отсчета (минимум из: сегодня, конец месяца, конец плана)
+  let countEnd = today;
+  if (monthEnd < countEnd) countEnd = monthEnd;
+  if (state.end < countEnd) countEnd = state.end;
+  
+  // Проверяем, что интервал валидный
+  if (countEnd < countStart) return null;
+  
+  // Считаем количество дней (включительно)
+  const daysCount = Math.floor((countEnd - countStart) / (1000 * 60 * 60 * 24)) + 1;
+  
+  // Получаем транзакции текущего месяца
+  const transactions = state.monthlyTransactions[monthIndex] || [];
+  
+  // Считаем сумму трат за период
+  let totalSpent = 0;
+  transactions.forEach(t => {
+    const transDate = new Date(t.date);
+    const transDateOnly = new Date(transDate.getFullYear(), transDate.getMonth(), transDate.getDate());
+    if (transDateOnly >= countStart && transDateOnly <= countEnd) {
+      totalSpent += t.amount || 0;
     }
+  });
+  
+  const dailyAvg = totalSpent / daysCount;
+  
+  // Рассчитываем рекомендуемый лимит
+  const recommendedDailyLimit = dynamicLimit / 30; // Примерно 30 дней в месяце
+  const recommendedTotalForDays = recommendedDailyLimit * daysCount;
+  
+  // Определяем статус (хорошо/нормально/плохо)
+  const percentage = (totalSpent / recommendedTotalForDays) * 100;
+  let status = 'normal';
+  if (percentage < 90) status = 'good';
+  else if (percentage > 110) status = 'bad';
+  
+  return {
+    average: dailyAvg,
+    days: daysCount,
+    total: totalSpent,
+    recommendedDaily: recommendedDailyLimit,
+    recommendedTotal: recommendedTotalForDays,
+    percentage: percentage,
+    status: status
+  };
+}
+
 
     // ===========================
     // УПРАВЛЕНИЕ СВОРАЧИВАНИЕМ МЕСЯЦЕВ
@@ -1306,242 +1370,283 @@
     }
 
         function renderMonthsList(baseMonthlyLimit, currentLimit){
-      $monthsList.innerHTML = '';
-      if(state.months <= 0) return;
-      
-      // Получаем фактические траты
-      const monthlyActuals = state.monthlyTransactions.map(transactions => 
-        transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
-      );
+  $monthsList.innerHTML = '';
+  if(state.months <= 0) return;
+  
+  // Получаем фактические траты
+  const monthlyActuals = state.monthlyTransactions.map(transactions => 
+    transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
+  );
 
-      state.labels.forEach((label, idx) => {
-        const transactions = state.monthlyTransactions[idx] || [];
-        const monthTotal = transactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-        const mandatoryForMonth = calculateMandatoryForMonth(idx);
-        const hasTransactions = transactions.length > 0;
-        const isCurrent = isCurrentMonth(idx);
-        
-        // Рассчитываем среднюю трату за день для текущего месяца
-        const dailyAverage = isCurrent ? calculateDailyAverage(idx) : null;
-        
-        // Вычисляем динамический лимит для этого месяца
-        const dynamicLimit = calculateDynamicLimitForMonth(idx, baseMonthlyLimit, monthlyActuals);
-        const isOverspent = monthTotal > dynamicLimit;
-        const isNegativeLimit = dynamicLimit < 0;
+  state.labels.forEach((label, idx) => {
+    const transactions = state.monthlyTransactions[idx] || [];
+    const monthTotal = transactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const mandatoryForMonth = calculateMandatoryForMonth(idx);
+    const hasTransactions = transactions.length > 0;
+    const isCurrent = isCurrentMonth(idx);
+    
+    // Вычисляем динамический лимит для этого месяца
+    const dynamicLimit = calculateDynamicLimitForMonth(idx, baseMonthlyLimit, monthlyActuals);
+    
+    // Рассчитываем среднюю трату за день для текущего месяца с новыми данными
+    const dailyAverage = isCurrent ? calculateDailyAverage(idx, dynamicLimit) : null;
+    
+    const isOverspent = monthTotal > dynamicLimit;
+    const isNegativeLimit = dynamicLimit < 0;
 
-        const monthDiv = document.createElement('div');
-        monthDiv.className = 'month' + (isCurrent ? ' current' : '');
-        monthDiv.setAttribute('data-month-index', idx);
-        
-        // Определяем, должен ли месяц быть свернут
-        const monthId = `month_${idx}`;
-        const isCollapsed = !isCurrent && (state.collapsedMonths[monthId] !== false);
-        if (isCollapsed) {
-          monthDiv.classList.add('collapsed');
-          state.collapsedMonths[monthId] = true;
-        }
-        
-        if(isOverspent) monthDiv.style.borderColor = '#dc2626';
-        if(isNegativeLimit) monthDiv.style.background = 'rgba(220, 38, 38, 0.1)';
-
-        // Header с кнопкой сворачивания
-        const header = document.createElement('div');
-        header.className = 'month-header';
-        
-        const leftHeader = document.createElement('div');
-        leftHeader.style.display = 'flex';
-        leftHeader.style.alignItems = 'center';
-        leftHeader.style.flex = '1';
-        
-        const nameDiv = document.createElement('div');
-        nameDiv.className = 'month-name';
-        nameDiv.textContent = label;
-        if(isCurrent){
-          const badge = document.createElement('span');
-          badge.className = 'badge';
-          badge.textContent = 'ТЕКУЩИЙ';
-          nameDiv.appendChild(badge);
-        }
-        
-        // Кнопка сворачивания/разворачивания
-        const toggleBtn = document.createElement('button');
-        toggleBtn.className = 'month-toggle-btn' + (isCollapsed ? ' collapsed' : '');
-        toggleBtn.innerHTML = '▼';
-        toggleBtn.title = isCollapsed ? 'Развернуть' : 'Свернуть';
-        toggleBtn.onclick = (e) => {
-          e.stopPropagation();
-          toggleMonth(idx);
-        };
-        
-        leftHeader.appendChild(nameDiv);
-        leftHeader.appendChild(toggleBtn);
-
-        const rightHeader = document.createElement('div');
-        rightHeader.style.display = 'flex';
-        rightHeader.style.alignItems = 'center';
-        
-        const addBtn = document.createElement('button');
-        addBtn.className = 'btn accent icon small';
-        addBtn.innerHTML = '+';
-        addBtn.title = 'Добавить расход';
-        addBtn.onclick = (e) => {
-          e.stopPropagation();
-          // Разворачиваем месяц при добавлении расхода
-          if (state.collapsedMonths[monthId]) {
-            toggleMonth(idx);
-          }
-          openAddExpenseModal(idx, label);
-        };
-        
-        rightHeader.appendChild(addBtn);
-
-        header.appendChild(leftHeader);
-        header.appendChild(rightHeader);
-        monthDiv.appendChild(header);
-
-        // Контент месяца (скрывается при сворачивании)
-        const monthContent = document.createElement('div');
-        monthContent.className = 'month-content';
-        
-        // Добавляем обработчик клика для открытия детального просмотра
-        monthContent.onclick = () => openMonthDetailModal(idx, label, dynamicLimit, monthTotal, mandatoryForMonth);
-        monthContent.style.cursor = 'pointer';
-
-        // Stats
-        const stats = document.createElement('div');
-        stats.className = 'month-stats';
-
-        // Определяем какой план показывать
-        let planLabel = 'План';
-        let lastMonthWithExpenses = -1;
-        for(let i = 0; i < monthlyActuals.length; i++){
-          if(monthlyActuals[i] > 0) lastMonthWithExpenses = i;
-        }
-        
-        if(idx === 0 && monthlyActuals[0] === 0){
-          planLabel = 'План (базовый)';
-        } else if(idx <= lastMonthWithExpenses){
-          planLabel = 'План (базовый)';
-        } else if(lastMonthWithExpenses >= 0){
-          planLabel = 'План (перерасчет)';
-        } else {
-          planLabel = 'План (базовый)';
-        }
-        const statPlanned = createStatItem(planLabel, fmt0(dynamicLimit));
-        if(isNegativeLimit) statPlanned.style.color = '#ff4444';
-        
-        const statMandatory = createStatItem('Обязательные', fmt0(mandatoryForMonth));
-        const statActual = createStatItem('Потрачено', fmt0(monthTotal));
-        if(isOverspent) statActual.style.color = '#ff4444';
-
-        stats.appendChild(statPlanned);
-        stats.appendChild(statMandatory);
-        stats.appendChild(statActual);
-
-        monthContent.appendChild(stats);
-        
-        // Добавляем блок со средней тратой за день для текущего месяца
-        if(isCurrent && dailyAverage && dailyAverage.days > 0){
-          const dailyAvgDiv = document.createElement('div');
-          dailyAvgDiv.style.cssText = 'background: linear-gradient(135deg, rgba(109,211,251,.08), rgba(167,139,250,.08)); border:1px solid #4338ca; border-radius:8px; padding:10px; margin:10px 0;';
-          dailyAvgDiv.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">Средняя трата в день</div>
-                <div style="font-size:16px; font-weight:700; color:var(--accent);">${fmt0(dailyAverage.average)}</div>
-                <div style="font-size:11px; color:var(--muted); margin-top:2px;">за ${dailyAverage.days} ${dailyAverage.days === 1 ? 'день' : dailyAverage.days < 5 ? 'дня' : 'дней'}</div>
-              </div>
-              <div style="text-align:right;">
-                <div style="font-size:11px; color:var(--muted);">Всего потрачено:</div>
-                <div style="font-size:14px; font-weight:600; color:var(--text);">${fmt0(dailyAverage.total)}</div>
-              </div>
-            </div>
-          `;
-          monthContent.appendChild(dailyAvgDiv);
-        }
-        
-        // Предупреждение если лимит отрицательный
-        if(isNegativeLimit){
-          const warning = document.createElement('div');
-          warning.style.cssText = 'background:rgba(220,38,38,0.2);border:1px solid #dc2626;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;color:#ff8a8a;font-weight:600;';
-          warning.textContent = '⚠️ Бюджет исчерпан! Требуется корректировка плана.';
-          monthContent.appendChild(warning);
-        }
-        
-        // Предупреждение о перерасходе
-        if(isOverspent && !isNegativeLimit){
-          const warning = document.createElement('div');
-          warning.style.cssText = 'background:rgba(255,138,138,0.1);border:1px solid #ff8a8a;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;color:#ff8a8a;';
-          const overspentAmount = monthTotal - dynamicLimit;
-          warning.innerHTML = `⚠️ Перерасход: ${fmt0(overspentAmount)}`;
-          monthContent.appendChild(warning);
-        }
-
-        // Показываем обязательные платежи для этого месяца
-        if(mandatoryForMonth > 0){
-          const mandatoryInfo = document.createElement('div');
-          mandatoryInfo.style.cssText = 'background:#1a1f37;border:1px solid #4338ca;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;';
-          
-          const paymentsForMonth = [];
-          for(const payment of state.mandatoryPayments){
-            const paymentDate = new Date(state.start.getFullYear(), state.start.getMonth() + idx, payment.dayOfMonth);
-            if(paymentDate >= state.start && paymentDate <= state.end && paymentDate.getMonth() === (state.start.getMonth() + idx) % 12){
-              paymentsForMonth.push(`${payment.name}: ${fmt0(payment.amount)} (${payment.dayOfMonth} числа)`);
-            }
-          }
-          
-          mandatoryInfo.innerHTML = `<div style="color:var(--purple);font-weight:600;margin-bottom:4px;">Обязательные платежи:</div>${paymentsForMonth.join('<br>')}`;
-          monthContent.appendChild(mandatoryInfo);
-        }
-
-        // Transactions list
-        if(hasTransactions){
-          const transList = document.createElement('div');
-          transList.className = 'transactions';
-          
-          transactions.forEach((t, tIdx) => {
-            const transDiv = document.createElement('div');
-            transDiv.className = 'transaction';
-            
-            const leftDiv = document.createElement('div');
-            leftDiv.innerHTML = `
-              <div>${t.description || 'Без описания'}</div>
-              <div class="date">${new Date(t.date).toLocaleDateString('ru-RU')}</div>
-            `;
-            
-            const rightDiv = document.createElement('div');
-            rightDiv.style.display = 'flex';
-            rightDiv.style.gap = '8px';
-            rightDiv.style.alignItems = 'center';
-            
-            const amountSpan = document.createElement('span');
-            amountSpan.className = 'amount';
-            amountSpan.textContent = fmt0(t.amount);
-            
-            const delBtn = document.createElement('button');
-            delBtn.className = 'btn ghost small';
-            delBtn.textContent = '×';
-            delBtn.style.padding = '2px 8px';
-            delBtn.onclick = (e) => {
-              e.stopPropagation();
-              deleteTransaction(idx, tIdx);
-            };
-            
-            rightDiv.appendChild(amountSpan);
-            rightDiv.appendChild(delBtn);
-            
-            transDiv.appendChild(leftDiv);
-            transDiv.appendChild(rightDiv);
-            transList.appendChild(transDiv);
-          });
-          
-          monthContent.appendChild(transList);
-        }
-
-        monthDiv.appendChild(monthContent);
-        $monthsList.appendChild(monthDiv);
-      });
+    const monthDiv = document.createElement('div');
+    monthDiv.className = 'month' + (isCurrent ? ' current' : '');
+    monthDiv.setAttribute('data-month-index', idx);
+    
+    // Определяем, должен ли месяц быть свернут
+    const monthId = `month_${idx}`;
+    const isCollapsed = !isCurrent && (state.collapsedMonths[monthId] !== false);
+    if (isCollapsed) {
+      monthDiv.classList.add('collapsed');
+      state.collapsedMonths[monthId] = true;
     }
+    
+    if(isOverspent) monthDiv.style.borderColor = '#dc2626';
+    if(isNegativeLimit) monthDiv.style.background = 'rgba(220, 38, 38, 0.1)';
+
+    // Header с кнопкой сворачивания
+    const header = document.createElement('div');
+    header.className = 'month-header';
+    
+    const leftHeader = document.createElement('div');
+    leftHeader.style.display = 'flex';
+    leftHeader.style.alignItems = 'center';
+    leftHeader.style.flex = '1';
+    
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'month-name';
+    nameDiv.textContent = label;
+    if(isCurrent){
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = 'ТЕКУЩИЙ';
+      nameDiv.appendChild(badge);
+    }
+    
+    // Кнопка сворачивания/разворачивания
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'month-toggle-btn' + (isCollapsed ? ' collapsed' : '');
+    toggleBtn.innerHTML = '▼';
+    toggleBtn.title = isCollapsed ? 'Развернуть' : 'Свернуть';
+    toggleBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleMonth(idx);
+    };
+    
+    leftHeader.appendChild(nameDiv);
+    leftHeader.appendChild(toggleBtn);
+
+    const rightHeader = document.createElement('div');
+    rightHeader.style.display = 'flex';
+    rightHeader.style.alignItems = 'center';
+    
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn accent icon small';
+    addBtn.innerHTML = '+';
+    addBtn.title = 'Добавить расход';
+    addBtn.onclick = (e) => {
+      e.stopPropagation();
+      // Разворачиваем месяц при добавлении расхода
+      if (state.collapsedMonths[monthId]) {
+        toggleMonth(idx);
+      }
+      openAddExpenseModal(idx, label);
+    };
+    
+    rightHeader.appendChild(addBtn);
+
+    header.appendChild(leftHeader);
+    header.appendChild(rightHeader);
+    monthDiv.appendChild(header);
+
+    // Контент месяца (скрывается при сворачивании)
+    const monthContent = document.createElement('div');
+    monthContent.className = 'month-content';
+    
+    // Добавляем обработчик клика для открытия детального просмотра
+    monthContent.onclick = () => openMonthDetailModal(idx, label, dynamicLimit, monthTotal, mandatoryForMonth);
+    monthContent.style.cursor = 'pointer';
+
+    // Stats
+    const stats = document.createElement('div');
+    stats.className = 'month-stats';
+
+    // Определяем какой план показывать
+    let planLabel = 'План';
+    let lastMonthWithExpenses = -1;
+    for(let i = 0; i < monthlyActuals.length; i++){
+      if(monthlyActuals[i] > 0) lastMonthWithExpenses = i;
+    }
+    
+    if(idx === 0 && monthlyActuals[0] === 0){
+      planLabel = 'План (базовый)';
+    } else if(idx <= lastMonthWithExpenses){
+      planLabel = 'План (базовый)';
+    } else if(lastMonthWithExpenses >= 0){
+      planLabel = 'План (перерасчет)';
+    } else {
+      planLabel = 'План (базовый)';
+    }
+    const statPlanned = createStatItem(planLabel, fmt0(dynamicLimit));
+    if(isNegativeLimit) statPlanned.style.color = '#ff4444';
+    
+    const statMandatory = createStatItem('Обязательные', fmt0(mandatoryForMonth));
+    const statActual = createStatItem('Потрачено', fmt0(monthTotal));
+    if(isOverspent) statActual.style.color = '#ff4444';
+
+    stats.appendChild(statPlanned);
+    stats.appendChild(statMandatory);
+    stats.appendChild(statActual);
+
+    monthContent.appendChild(stats);
+    
+    // Добавляем блок со средней тратой за день для текущего месяца - НОВАЯ ВЕРСИЯ
+    if(isCurrent && dailyAverage && dailyAverage.days > 0){
+      const dailyAvgDiv = document.createElement('div');
+      
+      // Определяем класс стиля в зависимости от статуса
+      let bgClass = 'daily-avg-normal';
+      if(dailyAverage.status === 'good') bgClass = 'daily-avg-good';
+      else if(dailyAverage.status === 'bad') bgClass = 'daily-avg-bad';
+      
+      dailyAvgDiv.className = bgClass;
+      dailyAvgDiv.style.cssText = 'border-radius:8px; padding:10px; margin:10px 0; border: 1px solid;';
+      
+      // Определяем цвет для значений
+      let valueClass = 'daily-avg-value';
+      if(dailyAverage.status === 'good') valueClass += ' good';
+      else if(dailyAverage.status === 'bad') valueClass += ' bad';
+      
+      // Формируем индикатор прогресса
+      let progressClass = 'progress-indicator normal';
+      let progressText = Math.round(dailyAverage.percentage) + '%';
+      if(dailyAverage.status === 'good') {
+        progressClass = 'progress-indicator good';
+        progressText = '✓ ' + progressText;
+      } else if(dailyAverage.status === 'bad') {
+        progressClass = 'progress-indicator bad';
+        progressText = '⚠ ' + progressText;
+      }
+      
+      dailyAvgDiv.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:start;">
+          <div style="flex: 1;">
+            <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">
+              Средняя трата в день
+              <span class="${progressClass}">${progressText}</span>
+            </div>
+            <div style="font-size:16px; font-weight:700;" class="${valueClass}">
+              ${fmt0(dailyAverage.average)}
+              <span style="font-size:13px; font-weight:500; color:var(--muted); margin-left:4px;">
+                (рек. ${fmt0(dailyAverage.recommendedDaily)})
+              </span>
+            </div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">
+              за ${dailyAverage.days} ${dailyAverage.days === 1 ? 'день' : dailyAverage.days < 5 ? 'дня' : 'дней'}
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:11px; color:var(--muted);">Всего потрачено:</div>
+            <div style="font-size:14px; font-weight:600; color:var(--text);">
+              ${fmt0(dailyAverage.total)}
+            </div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">
+              рек. ${fmt0(dailyAverage.recommendedTotal)}
+            </div>
+          </div>
+        </div>
+      `;
+      monthContent.appendChild(dailyAvgDiv);
+    }
+    
+    // Предупреждение если лимит отрицательный
+    if(isNegativeLimit){
+      const warning = document.createElement('div');
+      warning.style.cssText = 'background:rgba(220,38,38,0.2);border:1px solid #dc2626;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;color:#ff8a8a;font-weight:600;';
+      warning.textContent = '⚠️ Бюджет исчерпан! Требуется корректировка плана.';
+      monthContent.appendChild(warning);
+    }
+    
+    // Предупреждение о перерасходе
+    if(isOverspent && !isNegativeLimit){
+      const warning = document.createElement('div');
+      warning.style.cssText = 'background:rgba(255,138,138,0.1);border:1px solid #ff8a8a;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;color:#ff8a8a;';
+      const overspentAmount = monthTotal - dynamicLimit;
+      warning.innerHTML = `⚠️ Перерасход: ${fmt0(overspentAmount)}`;
+      monthContent.appendChild(warning);
+    }
+
+    // Показываем обязательные платежи для этого месяца
+    if(mandatoryForMonth > 0){
+      const mandatoryInfo = document.createElement('div');
+      mandatoryInfo.style.cssText = 'background:#1a1f37;border:1px solid #4338ca;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;';
+      
+      const paymentsForMonth = [];
+      for(const payment of state.mandatoryPayments){
+        const paymentDate = new Date(state.start.getFullYear(), state.start.getMonth() + idx, payment.dayOfMonth);
+        if(paymentDate >= state.start && paymentDate <= state.end && paymentDate.getMonth() === (state.start.getMonth() + idx) % 12){
+          paymentsForMonth.push(`${payment.name}: ${fmt0(payment.amount)} (${payment.dayOfMonth} числа)`);
+        }
+      }
+      
+      mandatoryInfo.innerHTML = `<div style="color:var(--purple);font-weight:600;margin-bottom:4px;">Обязательные платежи:</div>${paymentsForMonth.join('<br>')}`;
+      monthContent.appendChild(mandatoryInfo);
+    }
+
+    // Transactions list
+    if(hasTransactions){
+      const transList = document.createElement('div');
+      transList.className = 'transactions';
+      
+      transactions.forEach((t, tIdx) => {
+        const transDiv = document.createElement('div');
+        transDiv.className = 'transaction';
+        
+        const leftDiv = document.createElement('div');
+        leftDiv.innerHTML = `
+          <div>${t.description || 'Без описания'}</div>
+          <div class="date">${new Date(t.date).toLocaleDateString('ru-RU')}</div>
+        `;
+        
+        const rightDiv = document.createElement('div');
+        rightDiv.style.display = 'flex';
+        rightDiv.style.gap = '8px';
+        rightDiv.style.alignItems = 'center';
+        
+        const amountSpan = document.createElement('span');
+        amountSpan.className = 'amount';
+        amountSpan.textContent = fmt0(t.amount);
+        
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn ghost small';
+        delBtn.textContent = '×';
+        delBtn.style.padding = '2px 8px';
+        delBtn.onclick = (e) => {
+          e.stopPropagation();
+          deleteTransaction(idx, tIdx);
+        };
+        
+        rightDiv.appendChild(amountSpan);
+        rightDiv.appendChild(delBtn);
+        
+        transDiv.appendChild(leftDiv);
+        transDiv.appendChild(rightDiv);
+        transList.appendChild(transDiv);
+      });
+      
+      monthContent.appendChild(transList);
+    }
+
+    monthDiv.appendChild(monthContent);
+    $monthsList.appendChild(monthDiv);
+  });
+}
+
 
 
     function createStatItem(label, value){
@@ -2038,8 +2143,3 @@
   </script>
 </body>
 </html>
-
-
-
-
-
