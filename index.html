@@ -638,6 +638,169 @@
   opacity: 1;
   visibility: visible;
 }
+
+    /* Стили для детализации прогноза */
+.legend-item.clickable {
+  cursor: pointer;
+  transition: transform 0.1s, background 0.1s;
+}
+.legend-item.clickable:hover {
+  transform: translateY(-1px);
+  background: rgba(109,211,251,.1);
+}
+
+.forecast-detail-modal .modal-content {
+  max-width: 550px;
+}
+
+.forecast-info-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.forecast-card {
+  background: #0f1326;
+  border: 1px solid #27305a;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.forecast-card.highlight {
+  background: linear-gradient(135deg, rgba(109,211,251,.06), rgba(167,139,250,.06));
+  border-color: #4338ca;
+}
+
+.forecast-card.warning {
+  background: rgba(255,138,138,.08);
+  border-color: #dc2626;
+}
+
+.forecast-card.success {
+  background: rgba(134,239,172,.08);
+  border-color: #4ade80;
+}
+
+.forecast-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.forecast-value {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.forecast-value.danger {
+  color: #ff4444;
+}
+
+.forecast-value.success {
+  color: #4ade80;
+}
+
+.forecast-value.warning {
+  color: #ffb86b;
+}
+
+.forecast-description {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.forecast-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.comparison-item {
+  background: #0b0f1e;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.comparison-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.comparison-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.forecast-timeline {
+  margin-top: 16px;
+  padding: 12px;
+  background: #0b0f1e;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+}
+
+.timeline-bar {
+  height: 8px;
+  background: #1f2937;
+  border-radius: 4px;
+  position: relative;
+  margin: 12px 0;
+}
+
+.timeline-progress {
+  height: 100%;
+  border-radius: 4px;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.timeline-marker {
+  position: absolute;
+  top: -6px;
+  width: 20px;
+  height: 20px;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+
+.forecast-alert {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(255,138,138,.08);
+  border: 1px solid #dc2626;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.forecast-alert.info {
+  background: rgba(109,211,251,.08);
+  border-color: #4338ca;
+}
+
+.forecast-alert-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.forecast-alert-text {
+  font-size: 13px;
+  line-height: 1.5;
+}
     
     
 
@@ -751,15 +914,15 @@
   <span class="pill legend-item">
     <span class="dot actual"></span> Фактический баланс
   </span>
-  <span class="pill legend-item">
+  <span class="pill legend-item clickable" onclick="openForecastDetailModal('uniform')">
     <span class="dot forecast"></span> Прогноз равномерный
-    <span class="info-icon">?</span>
-    <span class="tooltip">Если будете тратить оставшуюся сумму равномерно</span>
+    <span class="info-icon">📊</span>
+    <span class="tooltip">Клик для подробностей</span>
   </span>
-  <span class="pill legend-item">
+  <span class="pill legend-item clickable" onclick="openForecastDetailModal('trend')">
     <span class="dot trend"></span> Прогноз по истории
-    <span class="info-icon">?</span>
-    <span class="tooltip">На основе ваших реальных трат с учетом тренда</span>
+    <span class="info-icon">📊</span>
+    <span class="tooltip">Клик для подробностей</span>
   </span>
 </div>
         </div>
@@ -911,6 +1074,24 @@
       </div>
     </div>
   </div>
+
+  <!-- Модальное окно детализации прогноза -->
+<div id="forecastDetailModal" class="modal forecast-detail-modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 class="modal-title" id="forecastDetailTitle">Детали прогноза</h3>
+      <button class="modal-close" onclick="closeForecastDetailModal()">×</button>
+    </div>
+    
+    <div id="forecastContent">
+      <!-- Содержимое будет добавляться динамически -->
+    </div>
+    
+    <div class="actions" style="margin-top: 20px;">
+      <button class="btn ghost" onclick="closeForecastDetailModal()">Закрыть</button>
+    </div>
+  </div>
+</div>
 
 
   <script>
@@ -1476,6 +1657,324 @@
   }
   
   return forecast;
+}
+
+    // ===========================
+// ДЕТАЛИЗАЦИЯ ПРОГНОЗОВ
+// ===========================
+function calculateForecastDetails() {
+  if (!state.start || !state.end || state.months <= 0) return null;
+  
+  // Получаем фактические траты
+  const monthlyActuals = state.monthlyTransactions.map(transactions => 
+    transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
+  );
+  
+  // Находим последний месяц с тратами
+  let lastMonthWithExpenses = -1;
+  let totalSpentSoFar = 0;
+  for(let i = 0; i < monthlyActuals.length; i++){
+    if(monthlyActuals[i] > 0){
+      lastMonthWithExpenses = i;
+      totalSpentSoFar += monthlyActuals[i] + calculateMandatoryForMonth(i);
+    }
+  }
+  
+  // Если нет трат, возвращаем базовые значения
+  if(lastMonthWithExpenses < 0){
+    const mandatoryTotal = calculateTotalMandatory();
+    const availableTotal = (state.initial - state.target) - mandatoryTotal;
+    const monthlyLimit = availableTotal / state.months;
+    
+    return {
+      uniform: {
+        finalBalance: state.target,
+        willComplete: monthlyLimit >= 0,
+        monthlySpending: monthlyLimit,
+        totalSpending: availableTotal,
+        completionDate: state.end,
+        runOutDate: null,
+        remainingMonths: state.months
+      },
+      trend: null
+    };
+  }
+  
+  // Расчет для равномерного прогноза
+  const mandatoryTotal = calculateTotalMandatory();
+  const availableTotal = (state.initial - state.target) - mandatoryTotal;
+  const sumActual = monthlyActuals.reduce((sum, v) => sum + v, 0);
+  const remTotal = availableTotal - sumActual;
+  const remainingMonths = state.months - lastMonthWithExpenses - 1;
+  const newMonthlyLimit = remainingMonths > 0 ? (remTotal / remainingMonths) : 0;
+  
+  // Считаем оставшиеся обязательные платежи
+  let futureMandatory = 0;
+  for(let i = lastMonthWithExpenses + 1; i < state.months; i++){
+    futureMandatory += calculateMandatoryForMonth(i);
+  }
+  
+  const uniformFinalBalance = state.initial - totalSpentSoFar - 
+    (newMonthlyLimit * remainingMonths) - futureMandatory;
+  
+  // Расчет для прогноза по истории
+  const monthsWithData = lastMonthWithExpenses + 1;
+  const actualSpending = monthlyActuals.slice(0, monthsWithData);
+  const avgSpending = actualSpending.reduce((sum, v) => sum + v, 0) / monthsWithData;
+  
+  // Определяем тренд
+  let trendGrowth = 0;
+  if(monthsWithData >= 2) {
+    const firstHalf = actualSpending.slice(0, Math.floor(monthsWithData/2));
+    const secondHalf = actualSpending.slice(Math.floor(monthsWithData/2));
+    const avgFirst = firstHalf.reduce((sum, v) => sum + v, 0) / firstHalf.length;
+    const avgSecond = secondHalf.reduce((sum, v) => sum + v, 0) / secondHalf.length;
+    trendGrowth = (avgSecond - avgFirst) / avgFirst;
+  }
+  
+  // Экстраполяция для текущего месяца
+  const now = new Date();
+  const currentMonthIndex = (now.getFullYear() - state.start.getFullYear()) * 12 + 
+    (now.getMonth() - state.start.getMonth());
+  
+  let projectedMonthlySpending = avgSpending;
+  if(currentMonthIndex >= 0 && currentMonthIndex < monthlyActuals.length && 
+     monthlyActuals[currentMonthIndex] > 0) {
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const dailyRate = monthlyActuals[currentMonthIndex] / dayOfMonth;
+    const projectedCurrentMonth = dailyRate * daysInMonth;
+    projectedMonthlySpending = avgSpending * 0.4 + projectedCurrentMonth * 0.6;
+  }
+  
+  // Прогнозируем баланс по истории
+  let trendBalance = state.initial - totalSpentSoFar;
+  let runOutMonth = -1;
+  
+  for(let i = lastMonthWithExpenses + 1; i < state.months; i++){
+    const trendFactor = Math.max(0, 1 - (i - lastMonthWithExpenses) * 0.1);
+    const trendAdjustment = 1 + (trendGrowth * trendFactor);
+    const predictedSpending = projectedMonthlySpending * trendAdjustment;
+    const mandatoryForMonth = calculateMandatoryForMonth(i);
+    
+    trendBalance -= (predictedSpending + mandatoryForMonth);
+    
+    if(trendBalance < state.target && runOutMonth === -1){
+      runOutMonth = i;
+    }
+  }
+  
+  // Рассчитываем дату исчерпания средств
+  let runOutDate = null;
+  if(runOutMonth >= 0){
+    runOutDate = new Date(state.start.getFullYear(), state.start.getMonth() + runOutMonth, 15);
+  }
+  
+  return {
+    uniform: {
+      finalBalance: uniformFinalBalance,
+      willComplete: uniformFinalBalance >= state.target,
+      monthlySpending: newMonthlyLimit,
+      totalSpending: remTotal,
+      completionDate: state.end,
+      runOutDate: uniformFinalBalance < state.target ? runOutDate : null,
+      remainingMonths: remainingMonths
+    },
+    trend: {
+      finalBalance: trendBalance,
+      willComplete: trendBalance >= state.target,
+      avgSpending: avgSpending,
+      projectedSpending: projectedMonthlySpending,
+      trendGrowth: trendGrowth,
+      totalSpending: (projectedMonthlySpending * remainingMonths * (1 + trendGrowth/2)) + futureMandatory,
+      completionDate: trendBalance >= state.target ? state.end : null,
+      runOutDate: runOutDate,
+      monthsWithData: monthsWithData
+    }
+  };
+}
+
+function openForecastDetailModal(type) {
+  const details = calculateForecastDetails();
+  if (!details) return;
+  
+  const modal = document.getElementById('forecastDetailModal');
+  const content = document.getElementById('forecastContent');
+  const title = document.getElementById('forecastDetailTitle');
+  
+  if (type === 'uniform') {
+    title.textContent = 'Прогноз: Равномерные траты';
+    content.innerHTML = renderUniformForecast(details.uniform);
+  } else if (type === 'trend') {
+    title.textContent = 'Прогноз: На основе истории';
+    if (details.trend) {
+      content.innerHTML = renderTrendForecast(details.trend);
+    } else {
+      content.innerHTML = `
+        <div class="forecast-alert info">
+          <div class="forecast-alert-icon">ℹ️</div>
+          <div class="forecast-alert-text">
+            Недостаточно данных для прогноза по истории. Добавьте траты хотя бы за один месяц.
+          </div>
+        </div>
+      `;
+    }
+  }
+  
+  modal.classList.add('show');
+}
+
+function renderUniformForecast(data) {
+  const statusClass = data.willComplete ? 'success' : 'warning';
+  const statusText = data.willComplete ? 'План выполним' : 'План под угрозой';
+  const statusIcon = data.willComplete ? '✓' : '⚠️';
+  
+  let html = `
+    <div class="forecast-info-grid">
+      <div class="forecast-card ${statusClass}">
+        <div class="forecast-label">Статус прогноза</div>
+        <div class="forecast-value">${statusIcon} ${statusText}</div>
+        <div class="forecast-description">
+          ${data.willComplete 
+            ? 'При равномерных тратах вы достигнете целевого баланса' 
+            : 'Текущий темп трат не позволит достичь цели'}
+        </div>
+      </div>
+      
+      <div class="forecast-card">
+        <div class="forecast-label">Прогнозируемый баланс на ${state.end.toLocaleDateString('ru-RU')}</div>
+        <div class="forecast-value ${data.finalBalance < state.target ? 'danger' : 'success'}">
+          ${fmt0(data.finalBalance)}
+        </div>
+        <div class="forecast-description">
+          Целевой баланс: ${fmt0(state.target)}
+          ${data.finalBalance >= state.target 
+            ? ` (запас ${fmt0(data.finalBalance - state.target)})` 
+            : ` (недостаток ${fmt0(state.target - data.finalBalance)})`}
+        </div>
+      </div>
+      
+      <div class="forecast-card highlight">
+        <div class="forecast-label">Рекомендуемые траты</div>
+        <div class="forecast-comparison">
+          <div class="comparison-item">
+            <div class="comparison-label">В месяц</div>
+            <div class="comparison-value">${fmt0(data.monthlySpending)}</div>
+          </div>
+          <div class="comparison-item">
+            <div class="comparison-label">В день</div>
+            <div class="comparison-value">${fmt0(data.monthlySpending / 30)}</div>
+          </div>
+        </div>
+        <div class="forecast-description">
+          Осталось ${data.remainingMonths} ${data.remainingMonths === 1 ? 'месяц' : data.remainingMonths < 5 ? 'месяца' : 'месяцев'} 
+          из запланированных
+        </div>
+      </div>
+    </div>
+  `;
+  
+  if (!data.willComplete && data.runOutDate) {
+    html += `
+      <div class="forecast-alert">
+        <div class="forecast-alert-icon">⚠️</div>
+        <div class="forecast-alert-text">
+          <strong>Внимание!</strong> При текущем уровне трат средства могут закончиться примерно 
+          <strong>${data.runOutDate.toLocaleDateString('ru-RU')}</strong>, 
+          что не позволит достичь целевого баланса к концу периода.
+        </div>
+      </div>
+    `;
+  }
+  
+  return html;
+}
+
+function renderTrendForecast(data) {
+  const statusClass = data.willComplete ? 'success' : 'warning';
+  const statusText = data.willComplete ? 'Цель достижима' : 'Цель под угрозой';
+  const statusIcon = data.willComplete ? '✓' : '⚠️';
+  const trendIcon = data.trendGrowth > 0.05 ? '📈' : data.trendGrowth < -0.05 ? '📉' : '➡️';
+  const trendText = data.trendGrowth > 0.05 ? 'растут' : data.trendGrowth < -0.05 ? 'снижаются' : 'стабильны';
+  
+  let html = `
+    <div class="forecast-info-grid">
+      <div class="forecast-card ${statusClass}">
+        <div class="forecast-label">Прогноз на основе ${data.monthsWithData} ${data.monthsWithData === 1 ? 'месяца' : 'месяцев'} данных</div>
+        <div class="forecast-value">${statusIcon} ${statusText}</div>
+        <div class="forecast-description">
+          ${data.willComplete 
+            ? `Если продолжите тратить как обычно, достигнете цели с балансом ${fmt0(data.finalBalance)}` 
+            : `Текущий темп трат приведет к балансу ${fmt0(data.finalBalance)}, что ниже цели`}
+        </div>
+      </div>
+      
+      <div class="forecast-card">
+        <div class="forecast-label">Анализ ваших трат</div>
+        <div class="forecast-value">${trendIcon} Траты ${trendText}</div>
+        <div class="forecast-comparison">
+          <div class="comparison-item">
+            <div class="comparison-label">Средняя трата/мес</div>
+            <div class="comparison-value">${fmt0(data.avgSpending)}</div>
+          </div>
+          <div class="comparison-item">
+            <div class="comparison-label">Прогноз на месяц</div>
+            <div class="comparison-value">${fmt0(data.projectedSpending)}</div>
+          </div>
+        </div>
+        ${data.trendGrowth !== 0 ? `
+          <div class="forecast-description">
+            Тренд: ${data.trendGrowth > 0 ? '+' : ''}${(data.trendGrowth * 100).toFixed(1)}% 
+            ${data.trendGrowth > 0 ? '(траты увеличиваются)' : '(траты уменьшаются)'}
+          </div>
+        ` : ''}
+      </div>
+      
+      <div class="forecast-card ${data.finalBalance < state.target ? 'warning' : 'highlight'}">
+        <div class="forecast-label">Прогнозируемый итог</div>
+        <div class="forecast-value ${data.finalBalance < state.target ? 'danger' : 'success'}">
+          ${fmt0(data.finalBalance)}
+        </div>
+        <div class="forecast-description">
+          ${data.finalBalance >= state.target 
+            ? `Вы достигнете цели с запасом ${fmt0(data.finalBalance - state.target)}` 
+            : `До цели не хватит ${fmt0(state.target - data.finalBalance)}`}
+        </div>
+      </div>
+    </div>
+  `;
+  
+  if (!data.willComplete && data.runOutDate) {
+    html += `
+      <div class="forecast-alert">
+        <div class="forecast-alert-icon">🔴</div>
+        <div class="forecast-alert-text">
+          <strong>Критическое предупреждение!</strong><br>
+          При сохранении текущего темпа трат, вы достигнете минимального баланса (${fmt0(state.target)}) уже 
+          <strong>${data.runOutDate.toLocaleDateString('ru-RU')}</strong>.<br>
+          Это на ${Math.floor((state.end - data.runOutDate) / (1000 * 60 * 60 * 24))} дней раньше запланированного срока.
+        </div>
+      </div>
+    `;
+  } else if (data.willComplete) {
+    const daysLeft = Math.floor((state.end - new Date()) / (1000 * 60 * 60 * 24));
+    html += `
+      <div class="forecast-alert info">
+        <div class="forecast-alert-icon">💡</div>
+        <div class="forecast-alert-text">
+          <strong>Хорошие новости!</strong><br>
+          Ваш текущий темп трат позволит успешно достичь цели.<br>
+          До конца периода осталось ${daysLeft} ${daysLeft === 1 ? 'день' : daysLeft < 5 ? 'дня' : 'дней'}.
+        </div>
+      </div>
+    `;
+  }
+  
+  return html;
+}
+
+function closeForecastDetailModal() {
+  document.getElementById('forecastDetailModal').classList.remove('show');
 }
 
 
@@ -2263,16 +2762,23 @@
       }
     });
 
+    document.getElementById('forecastDetailModal').addEventListener('click', (e) => {
+  if(e.target.id === 'forecastDetailModal'){
+    closeForecastDetailModal();
+  }
+});
+
 
     // Закрытие по Escape
         // Закрытие по Escape
-    document.addEventListener('keydown', (e) => {
-      if(e.key === 'Escape'){
-        closeModal();
-        closeMandatoryModal();
-        closeMonthDetailModal();
-      }
-    });
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape'){
+    closeModal();
+    closeMandatoryModal();
+    closeMonthDetailModal();
+    closeForecastDetailModal(); // Добавлена новая строка
+  }
+});
 
     // ===========================
     // ИНИЦИАЛИЗАЦИЯ
@@ -2309,3 +2815,4 @@
   </script>
 </body>
 </html>
+
