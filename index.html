@@ -1476,7 +1476,8 @@
   let countStart;
   if (monthIndex === 0) {
     // Для первого месяца берем максимум из: начало месяца или дата начала плана
-    countStart = new Date(Math.max(monthStart.getTime(), state.start.getTime()));
+    const planStartDate = new Date(state.start.getFullYear(), state.start.getMonth(), state.start.getDate());
+    countStart = new Date(Math.max(monthStart.getTime(), planStartDate.getTime()));
   } else {
     // Для остальных месяцев - первое число
     countStart = monthStart;
@@ -1485,13 +1486,16 @@
   // Определяем конец отсчета (минимум из: сегодня, конец месяца, конец плана)
   let countEnd = today;
   if (monthEnd < countEnd) countEnd = monthEnd;
-  if (state.end < countEnd) countEnd = state.end;
+  
+  const planEndDate = new Date(state.end.getFullYear(), state.end.getMonth(), state.end.getDate());
+  if (planEndDate < countEnd) countEnd = planEndDate;
   
   // Проверяем, что интервал валидный
   if (countEnd < countStart) return null;
   
-  // Считаем количество дней (включительно)
-  const daysCount = Math.floor((countEnd - countStart) / (1000 * 60 * 60 * 24)) + 1;
+  // Считаем количество дней ВКЛЮЧИТЕЛЬНО (добавляем 1 день)
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const daysCount = Math.floor((countEnd - countStart) / msPerDay) + 1;
   
   // Получаем транзакции текущего месяца
   const transactions = state.monthlyTransactions[monthIndex] || [];
@@ -1513,7 +1517,7 @@
   const recommendedTotalForDays = recommendedDailyLimit * daysCount;
   
   // Определяем статус (хорошо/нормально/плохо)
-  const percentage = (totalSpent / recommendedTotalForDays) * 100;
+  const percentage = recommendedTotalForDays > 0 ? (totalSpent / recommendedTotalForDays) * 100 : 0;
   let status = 'normal';
   if (percentage < 90) status = 'good';
   else if (percentage > 110) status = 'bad';
@@ -1788,7 +1792,8 @@
       
       // Корректируем для первого месяца плана
       if(i === 0) {
-        startDate = new Date(Math.max(monthStart.getTime(), state.start.getTime()));
+        const planStartDate = new Date(state.start.getFullYear(), state.start.getMonth(), state.start.getDate());
+        startDate = new Date(Math.max(monthStart.getTime(), planStartDate.getTime()));
       }
       
       // Корректируем для текущего месяца ТОЛЬКО если это последний месяц с тратами
@@ -1796,16 +1801,19 @@
         (now.getFullYear() - state.start.getFullYear()) * 12 + 
         (now.getMonth() - state.start.getMonth()) : -1;
         
-      if(i === currentMonthIndex && i === lastMonthWithExpenses && today < monthEnd) {
-        endDate = new Date(Math.min(monthEnd.getTime(), today.getTime()));
+      if(i === currentMonthIndex && i === lastMonthWithExpenses && today <= monthEnd) {
+        endDate = today;
       }
       
       // Корректируем для последнего месяца плана
-      if(endDate > state.end) {
-        endDate = new Date(state.end);
+      const planEndDate = new Date(state.end.getFullYear(), state.end.getMonth(), state.end.getDate());
+      if(endDate > planEndDate) {
+        endDate = planEndDate;
       }
       
-      const daysInPeriod = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
+      // Правильный подсчет дней ВКЛЮЧИТЕЛЬНО
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const daysInPeriod = Math.max(1, Math.floor((endDate - startDate) / msPerDay) + 1);
       totalDaysWithData += daysInPeriod;
       totalSpending += monthlyActuals[i];
     }
@@ -1829,10 +1837,14 @@
     let effectiveEnd = monthEnd;
     
     // Корректируем границы с учетом периода планирования
-    if(effectiveEnd > state.end) effectiveEnd = new Date(state.end);
-    if(effectiveStart < state.start) effectiveStart = new Date(state.start);
+    const planEndDate = new Date(state.end.getFullYear(), state.end.getMonth(), state.end.getDate());
+    const planStartDate = new Date(state.start.getFullYear(), state.start.getMonth(), state.start.getDate());
     
-    const daysInMonth = Math.max(0, Math.floor((effectiveEnd - effectiveStart) / (1000 * 60 * 60 * 24)) + 1);
+    if(effectiveEnd > planEndDate) effectiveEnd = planEndDate;
+    if(effectiveStart < planStartDate) effectiveStart = planStartDate;
+    
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysInMonth = Math.max(0, Math.floor((effectiveEnd - effectiveStart) / msPerDay) + 1);
     
     // Прогнозируемые траты на месяц
     const predictedSpending = avgDailySpending * daysInMonth;
@@ -1883,19 +1895,29 @@ function calculateForecastDetails() {
       const monthEnd = new Date(state.start.getFullYear(), state.start.getMonth() + i + 1, 0);
       
       let startDate = monthStart;
-      if(i === 0 && state.start > monthStart) {
-        startDate = new Date(state.start);
+      // ИСПРАВЛЕНИЕ: правильно учитываем дату начала плана для первого месяца
+      if(i === 0) {
+        const planStartDate = new Date(state.start.getFullYear(), state.start.getMonth(), state.start.getDate());
+        startDate = new Date(Math.max(monthStart.getTime(), planStartDate.getTime()));
       }
       
       let endDate = monthEnd;
       // Если это текущий месяц, считаем только до сегодня
       const currentMonthIndex = (now.getFullYear() - state.start.getFullYear()) * 12 + 
                                (now.getMonth() - state.start.getMonth());
-      if(i === currentMonthIndex && today < monthEnd) {
-        endDate = new Date(today);
+      if(i === currentMonthIndex && today <= monthEnd) {
+        endDate = today;
       }
       
-      const daysInPeriod = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
+      // Корректируем для последнего месяца плана
+      const planEndDate = new Date(state.end.getFullYear(), state.end.getMonth(), state.end.getDate());
+      if(endDate > planEndDate) {
+        endDate = planEndDate;
+      }
+      
+      // ИСПРАВЛЕНИЕ: правильный подсчет дней ВКЛЮЧИТЕЛЬНО
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const daysInPeriod = Math.max(1, Math.floor((endDate - startDate) / msPerDay) + 1);
       totalDaysWithData += daysInPeriod;
       totalSpending += monthlyActuals[i];
     }
@@ -1942,7 +1964,7 @@ function calculateForecastDetails() {
         completionDate: state.end,
         runOutDate: null,
         remainingMonths: remainingMonths,
-        daysAnalyzed: 0,
+        daysAnalyzed: totalDaysWithData, // Исправлено
         currentBalance: currentBalance,
         daysLeft: daysLeft
       },
@@ -2018,11 +2040,11 @@ function calculateForecastDetails() {
       avgDailySpending: avgDailySpending,
       avgSpending: avgDailySpending * 30,
       projectedSpending: projectedFutureSpending,
-      trendGrowth: (avgDailySpending - recommendedDailyTotal) / recommendedDailyTotal,
+      trendGrowth: recommendedDailyTotal > 0 ? (avgDailySpending - recommendedDailyTotal) / recommendedDailyTotal : 0,
       totalSpending: projectedFutureSpending + futureMandatory,
       completionDate: willComplete ? state.end : null,
       runOutDate: runOutDate,
-      daysWithData: totalDaysWithData,
+      daysWithData: totalDaysWithData, // Теперь должно показывать правильное количество дней
       percentOfRecommended: percentOfRecommended,
       currentBalance: currentBalance,
       canSpend: availableToSpend,
@@ -2036,7 +2058,6 @@ function calculateForecastDetails() {
     }
   };
 }
-
 
 function openForecastDetailModal(type) {
   const details = calculateForecastDetails();
@@ -3434,6 +3455,7 @@ document.addEventListener('keydown', (e) => {
   </script>
 </body>
 </html>
+
 
 
 
