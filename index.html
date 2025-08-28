@@ -1475,8 +1475,8 @@
   // Определяем начало отсчета
   let countStart;
   if (monthIndex === 0) {
-    // Для первого месяца берем дату начала плана
-    countStart = new Date(state.start.getFullYear(), state.start.getMonth(), state.start.getDate());
+    // Для первого месяца берем максимум из: начало месяца или дата начала плана
+    countStart = new Date(Math.max(monthStart.getTime(), state.start.getTime()));
   } else {
     // Для остальных месяцев - первое число
     countStart = monthStart;
@@ -1766,125 +1766,87 @@
   const forecast = [];
   let currentBalance = initial;
   
-  // Определяем текущую дату и текущий месяц в плане
   const now = new Date();
-  const currentMonthIndex = state.start ? 
-    (now.getFullYear() - state.start.getFullYear()) * 12 + 
-    (now.getMonth() - state.start.getMonth()) : -1;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   
   // Находим последний месяц с тратами
   let lastMonthWithExpenses = -1;
-  let completedMonths = []; // Массив полностью завершенных месяцев
-  let currentMonthData = null; // Данные по текущему незавершенному месяцу
+  let totalDaysWithData = 0;
+  let totalSpending = 0;
   
+  // Правильно считаем историю трат
   for(let i = 0; i < monthlyActuals.length; i++){
     if(monthlyActuals[i] > 0){
       lastMonthWithExpenses = i;
       currentBalance = currentBalance - monthlyActuals[i] - (mandatoryByMonth[i] || 0);
       
-      // Определяем, завершен ли месяц
-      if(i < currentMonthIndex || (i === currentMonthIndex && now > state.end)) {
-        // Месяц полностью прошел
-        completedMonths.push({
-          index: i,
-          spending: monthlyActuals[i],
-          days: 30 // Примерное количество дней в месяце
-        });
-      } else if(i === currentMonthIndex) {
-        // Это текущий месяц, он не завершен
-        const monthStart = new Date(state.start.getFullYear(), state.start.getMonth() + i, 1);
-        const monthEnd = new Date(state.start.getFullYear(), state.start.getMonth() + i + 1, 0);
-        
-        // Определяем сколько дней прошло в этом месяце
-        let startDate = monthStart;
-        if(i === 0 && state.start > monthStart) {
-          startDate = state.start; // Для первого месяца учитываем дату начала плана
-        }
-        
-        const endDate = now < monthEnd ? now : monthEnd;
-        const daysElapsed = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
-        const totalDaysInMonth = Math.floor((monthEnd - startDate) / (1000 * 60 * 60 * 24)) + 1;
-        
-        currentMonthData = {
-          index: i,
-          spending: monthlyActuals[i],
-          daysElapsed: daysElapsed,
-          totalDays: totalDaysInMonth,
-          dailyRate: monthlyActuals[i] / daysElapsed,
-          projectedMonthTotal: (monthlyActuals[i] / daysElapsed) * totalDaysInMonth
-        };
+      const monthStart = new Date(state.start.getFullYear(), state.start.getMonth() + i, 1);
+      const monthEnd = new Date(state.start.getFullYear(), state.start.getMonth() + i + 1, 0);
+      
+      let startDate = monthStart;
+      let endDate = monthEnd;
+      
+      // Корректируем для первого месяца плана
+      if(i === 0) {
+        startDate = new Date(Math.max(monthStart.getTime(), state.start.getTime()));
       }
+      
+      // Корректируем для текущего месяца ТОЛЬКО если это последний месяц с тратами
+      const currentMonthIndex = state.start ? 
+        (now.getFullYear() - state.start.getFullYear()) * 12 + 
+        (now.getMonth() - state.start.getMonth()) : -1;
+        
+      if(i === currentMonthIndex && i === lastMonthWithExpenses && today < monthEnd) {
+        endDate = new Date(Math.min(monthEnd.getTime(), today.getTime()));
+      }
+      
+      // Корректируем для последнего месяца плана
+      if(endDate > state.end) {
+        endDate = new Date(state.end);
+      }
+      
+      const daysInPeriod = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
+      totalDaysWithData += daysInPeriod;
+      totalSpending += monthlyActuals[i];
     }
   }
   
   // Если нет истории трат, возвращаем пустой массив
-  if(lastMonthWithExpenses < 0) return [];
+  if(lastMonthWithExpenses < 0 || totalDaysWithData === 0) return [];
   
   // Начинаем прогноз с текущего баланса
   forecast.push(currentBalance);
   
-  // Рассчитываем среднедневную трату на основе ДНЕЙ, а не месяцев
-  let totalDaysWithData = 0;
-  let totalSpending = 0;
-  
-  // Учитываем завершенные месяцы
-  completedMonths.forEach(month => {
-    totalDaysWithData += month.days;
-    totalSpending += month.spending;
-  });
-  
-  // Учитываем текущий незавершенный месяц
-  if(currentMonthData) {
-    totalDaysWithData += currentMonthData.daysElapsed;
-    totalSpending += currentMonthData.spending;
-  }
-  
-  // Средняя трата в день на основе фактических данных
-  const avgDailySpending = totalDaysWithData > 0 ? totalSpending / totalDaysWithData : 0;
-  
-  // Если есть данные текущего месяца, используем их для более точного прогноза
-  let projectedMonthlySpending = avgDailySpending * 30; // Базовый прогноз
-  
-  if(currentMonthData && currentMonthData.daysElapsed >= 3) {
-    // Если в текущем месяце прошло хотя бы 3 дня, придаем больший вес его данным
-    const currentMonthWeight = Math.min(0.7, currentMonthData.daysElapsed / 30);
-    const historicalWeight = 1 - currentMonthWeight;
-    
-    projectedMonthlySpending = 
-      (currentMonthData.dailyRate * 30 * currentMonthWeight) + 
-      (avgDailySpending * 30 * historicalWeight);
-  }
-  
-  // Определяем тренд (если есть достаточно данных)
-  let trendFactor = 1;
-  if(completedMonths.length >= 2) {
-    const firstHalfAvg = completedMonths.slice(0, Math.floor(completedMonths.length/2))
-      .reduce((sum, m) => sum + m.spending/m.days, 0) / Math.floor(completedMonths.length/2);
-    const secondHalfAvg = completedMonths.slice(Math.floor(completedMonths.length/2))
-      .reduce((sum, m) => sum + m.spending/m.days, 0) / (completedMonths.length - Math.floor(completedMonths.length/2));
-    
-    trendFactor = secondHalfAvg / firstHalfAvg;
-  } else if(currentMonthData && currentMonthData.daysElapsed >= 7) {
-    // Если есть только текущий месяц, но прошла хотя бы неделя
-    // Сравниваем с рекомендуемым лимитом
-    const recommendedDaily = (initial - state.target - calculateTotalMandatory()) / 
-                            (state.months * 30);
-    if(recommendedDaily > 0) {
-      trendFactor = currentMonthData.dailyRate / recommendedDaily;
-    }
-  }
+  // Рассчитываем среднюю трату в день
+  const avgDailySpending = totalSpending / totalDaysWithData;
   
   // Строим прогноз для оставшихся месяцев
   for(let i = lastMonthWithExpenses + 1; i < state.months; i++){
-    // Применяем тренд с затуханием
-    const monthsAhead = i - lastMonthWithExpenses;
-    const trendDamping = Math.pow(0.95, monthsAhead); // Тренд затухает на 5% каждый месяц
-    const adjustedTrend = 1 + (trendFactor - 1) * trendDamping;
+    const monthStart = new Date(state.start.getFullYear(), state.start.getMonth() + i, 1);
+    const monthEnd = new Date(state.start.getFullYear(), state.start.getMonth() + i + 1, 0);
     
-    const predictedSpending = projectedMonthlySpending * adjustedTrend;
+    let effectiveStart = monthStart;
+    let effectiveEnd = monthEnd;
+    
+    // Корректируем границы с учетом периода планирования
+    if(effectiveEnd > state.end) effectiveEnd = new Date(state.end);
+    if(effectiveStart < state.start) effectiveStart = new Date(state.start);
+    
+    const daysInMonth = Math.max(0, Math.floor((effectiveEnd - effectiveStart) / (1000 * 60 * 60 * 24)) + 1);
+    
+    // Прогнозируемые траты на месяц
+    const predictedSpending = avgDailySpending * daysInMonth;
     const mandatoryForMonth = mandatoryByMonth[i] || 0;
+    const totalMonthSpending = predictedSpending + mandatoryForMonth;
     
-    currentBalance = currentBalance - predictedSpending - mandatoryForMonth;
+    // Обновляем баланс
+    currentBalance = currentBalance - totalMonthSpending;
+    
+    // Не позволяем балансу уйти слишком далеко в минус (ограничение для визуализации)
+    if(currentBalance < state.target - (state.initial - state.target)) {
+      currentBalance = state.target - (state.initial - state.target);
+    }
+    
     forecast.push(currentBalance);
   }
   
@@ -1898,145 +1860,150 @@ function calculateForecastDetails() {
   if (!state.start || !state.end || state.months <= 0) return null;
   
   const now = new Date();
-  const currentMonthIndex = (now.getFullYear() - state.start.getFullYear()) * 12 + 
-    (now.getMonth() - state.start.getMonth());
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   
   // Получаем фактические траты
   const monthlyActuals = state.monthlyTransactions.map(transactions => 
     transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
   );
   
-  // Анализируем данные с учетом дней
-  let totalDaysWithData = 0;
-  let totalSpending = 0;
+  // Находим последний месяц с тратами
   let lastMonthWithExpenses = -1;
-  let totalSpentSoFar = 0;
+  let totalDaysWithData = 0;
+  let totalSpending = 0; // Только пользовательские траты, без обязательных
+  let totalSpentWithMandatory = 0; // Все траты включая обязательные
   
-  // Считаем сколько уже потрачено (включая обязательные платежи)
+  // Анализируем историю трат
   for(let i = 0; i < monthlyActuals.length; i++){
-    const mandatoryForMonth = calculateMandatoryForMonth(i);
-    if(monthlyActuals[i] > 0 || mandatoryForMonth > 0){
+    if(monthlyActuals[i] > 0){
       lastMonthWithExpenses = i;
-      totalSpentSoFar += monthlyActuals[i] + mandatoryForMonth;
       
-      // Рассчитываем количество дней для этого месяца
+      // Считаем дни в этом месяце
       const monthStart = new Date(state.start.getFullYear(), state.start.getMonth() + i, 1);
       const monthEnd = new Date(state.start.getFullYear(), state.start.getMonth() + i + 1, 0);
       
       let startDate = monthStart;
       if(i === 0 && state.start > monthStart) {
-        startDate = state.start;
+        startDate = new Date(state.start);
       }
       
       let endDate = monthEnd;
-      if(i === currentMonthIndex) {
-        // Для текущего месяца считаем только прошедшие дни
-        endDate = now < monthEnd ? now : monthEnd;
+      // Если это текущий месяц, считаем только до сегодня
+      const currentMonthIndex = (now.getFullYear() - state.start.getFullYear()) * 12 + 
+                               (now.getMonth() - state.start.getMonth());
+      if(i === currentMonthIndex && today < monthEnd) {
+        endDate = new Date(today);
       }
       
       const daysInPeriod = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
-      
-      if(monthlyActuals[i] > 0) {
-        totalDaysWithData += daysInPeriod;
-        totalSpending += monthlyActuals[i];
-      }
+      totalDaysWithData += daysInPeriod;
+      totalSpending += monthlyActuals[i];
     }
   }
   
-  // Текущий баланс
-  const currentBalance = state.initial - totalSpentSoFar;
-  
-  // Если нет трат, возвращаем базовые значения
-  if(totalSpending === 0 || totalDaysWithData === 0){
-    const mandatoryTotal = calculateTotalMandatory();
-    const availableTotal = (state.initial - state.target) - mandatoryTotal;
-    const totalDays = Math.floor((state.end - state.start) / (1000 * 60 * 60 * 24)) + 1;
-    const dailyLimit = availableTotal / totalDays;
-    
-    return {
-      uniform: {
-        finalBalance: state.initial - mandatoryTotal,
-        willComplete: (state.initial - mandatoryTotal) >= state.target,
-        monthlySpending: (availableTotal / state.months),
-        dailySpending: dailyLimit,
-        totalSpending: availableTotal,
-        completionDate: state.end,
-        runOutDate: null,
-        remainingMonths: state.months,
-        daysAnalyzed: 0,
-        currentBalance: currentBalance
-      },
-      trend: null
-    };
+  // Считаем сколько уже потрачено всего (с обязательными)
+  for(let i = 0; i <= lastMonthWithExpenses; i++){
+    totalSpentWithMandatory += monthlyActuals[i] + calculateMandatoryForMonth(i);
   }
   
-  // Расчет для равномерного прогноза
-  const mandatoryTotal = calculateTotalMandatory();
-  const availableTotal = (state.initial - state.target) - mandatoryTotal;
-  const sumActual = totalSpending;
-  const remTotal = availableTotal - sumActual;
+  // Текущий баланс
+  const currentBalance = state.initial - totalSpentWithMandatory;
   
-  // Считаем оставшиеся дни и обязательные платежи
-  const daysLeft = Math.max(0, Math.floor((state.end - now) / (1000 * 60 * 60 * 24)) + 1);
-  const remainingMonths = Math.max(0, state.months - lastMonthWithExpenses - 1);
-  
+  // Считаем будущие обязательные платежи
   let futureMandatory = 0;
   for(let i = lastMonthWithExpenses + 1; i < state.months; i++){
     futureMandatory += calculateMandatoryForMonth(i);
   }
   
-  // Для равномерного прогноза
-  const availableForSpending = currentBalance - state.target - futureMandatory;
-  const newDailyLimit = daysLeft > 0 ? (availableForSpending / daysLeft) : 0;
-  const newMonthlyLimit = remainingMonths > 0 ? (remTotal / remainingMonths) : 0;
+  // Общие данные
+  const mandatoryTotal = calculateTotalMandatory();
+  const availableTotal = (state.initial - state.target) - mandatoryTotal;
+  const daysLeft = Math.max(0, Math.floor((state.end - today) / (1000 * 60 * 60 * 24)) + 1);
+  const remainingMonths = Math.max(0, state.months - lastMonthWithExpenses - 1);
   
+  // === РАВНОМЕРНЫЙ ПРОГНОЗ ===
+  const sumActual = totalSpending;
+  const remTotal = availableTotal - sumActual;
+  const availableForSpending = currentBalance - state.target - futureMandatory;
+  const newDailyLimit = daysLeft > 0 ? availableForSpending / daysLeft : 0;
+  const newMonthlyLimit = remainingMonths > 0 ? remTotal / remainingMonths : 0;
   const uniformFinalBalance = currentBalance - (Math.max(0, newDailyLimit) * daysLeft) - futureMandatory;
   
-  // Расчет для прогноза по истории на основе ДНЕЙ
-  const avgDailySpending = totalDaysWithData > 0 ? totalSpending / totalDaysWithData : 0;
-  const projectedMonthlySpending = avgDailySpending * 30;
-  
-  // Определяем тренд
-  let trendGrowth = 0;
-  const totalPeriodDays = Math.max(1, Math.floor((state.end - state.start) / (1000 * 60 * 60 * 24) + 1));
-  const recommendedDaily = availableTotal / totalPeriodDays;
-  if(recommendedDaily > 0 && totalDaysWithData >= 3) {
-    trendGrowth = (avgDailySpending - recommendedDaily) / recommendedDaily;
+  // === ПРОГНОЗ ПО ИСТОРИИ ===
+  if(totalSpending === 0 || totalDaysWithData === 0){
+    // Нет данных для прогноза по истории
+    return {
+      uniform: {
+        finalBalance: uniformFinalBalance,
+        willComplete: uniformFinalBalance >= state.target,
+        monthlySpending: newMonthlyLimit,
+        dailySpending: newDailyLimit,
+        totalSpending: remTotal,
+        completionDate: state.end,
+        runOutDate: null,
+        remainingMonths: remainingMonths,
+        daysAnalyzed: 0,
+        currentBalance: currentBalance,
+        daysLeft: daysLeft
+      },
+      trend: null
+    };
   }
   
-  // Прогнозируем когда закончатся деньги при текущем темпе
-  let runOutDate = null;
-  let trendFinalBalance = currentBalance;
+  // Средняя трата в день (только пользовательские траты)
+  const avgDailySpending = totalSpending / totalDaysWithData;
   
-  if(avgDailySpending > 0) {
-    // Сколько можем потратить до достижения минимума
-    const canSpend = currentBalance - state.target - futureMandatory;
+  // Считаем сколько денег доступно для трат (текущий баланс минус целевой)
+  const availableToSpend = currentBalance - state.target;
+  
+  // Прогнозируем сколько мы потратим за оставшиеся дни при текущем темпе
+  const projectedFutureSpending = avgDailySpending * daysLeft;
+  
+  // Прогнозируемый конечный баланс
+  const trendFinalBalance = currentBalance - projectedFutureSpending - futureMandatory;
+  
+  // Проверяем, достигнем ли мы цели
+  const willComplete = trendFinalBalance >= state.target;
+  
+  // Если не достигнем цели, рассчитываем когда закончатся деньги
+  let runOutDate = null;
+  let daysUntilRunOut = null;
+  
+  if (!willComplete && avgDailySpending > 0) {
+    // Сколько денег доступно для трат до достижения минимального баланса
+    const availableBeforeTarget = currentBalance - state.target;
     
-    if(canSpend > 0) {
-      // При текущем темпе трат, на сколько дней хватит денег
-      const daysUntilMinimum = Math.floor(canSpend / avgDailySpending);
+    // Учитываем будущие обязательные платежи
+    // Упрощенный расчет: распределяем их равномерно по дням
+    const avgDailyMandatory = daysLeft > 0 ? futureMandatory / daysLeft : 0;
+    const totalDailySpending = avgDailySpending + avgDailyMandatory;
+    
+    if (totalDailySpending > 0) {
+      daysUntilRunOut = Math.floor(availableBeforeTarget / totalDailySpending);
       
-      if(daysUntilMinimum < daysLeft) {
-        // Деньги закончатся раньше окончания периода
-        runOutDate = new Date(now.getTime() + (daysUntilMinimum * 24 * 60 * 60 * 1000));
-        trendFinalBalance = state.target;
-      } else {
-        // Денег хватит до конца периода
-        trendFinalBalance = currentBalance - (avgDailySpending * daysLeft) - futureMandatory;
+      if (daysUntilRunOut < 0) {
+        daysUntilRunOut = 0;
+        runOutDate = today;
+      } else if (daysUntilRunOut < daysLeft) {
+        runOutDate = new Date(today.getTime() + (daysUntilRunOut * 24 * 60 * 60 * 1000));
       }
-    } else {
-      // Уже превысили лимит
-      trendFinalBalance = currentBalance - futureMandatory;
-      runOutDate = now;
     }
   }
+  
+  // Рассчитываем процент от рекомендуемого
+  const totalDays = Math.floor((state.end - state.start) / (1000 * 60 * 60 * 24)) + 1;
+  const recommendedDailyTotal = availableTotal / totalDays;
+  const percentOfRecommended = recommendedDailyTotal > 0 ? (avgDailySpending / recommendedDailyTotal) * 100 : 0;
+  
+  // Средние обязательные платежи в день
+  const avgDailyMandatory = daysLeft > 0 ? futureMandatory / daysLeft : 0;
   
   return {
     uniform: {
       finalBalance: uniformFinalBalance,
       willComplete: uniformFinalBalance >= state.target,
       monthlySpending: newMonthlyLimit,
-      dailySpending: newDailyLimit,  // Используем переменную которая уже определена
+      dailySpending: newDailyLimit,
       totalSpending: remTotal,
       completionDate: state.end,
       runOutDate: uniformFinalBalance < state.target ? runOutDate : null,
@@ -2047,20 +2014,25 @@ function calculateForecastDetails() {
     },
     trend: {
       finalBalance: trendFinalBalance,
-      willComplete: trendFinalBalance >= state.target,
+      willComplete: willComplete,
       avgDailySpending: avgDailySpending,
-      avgSpending: projectedMonthlySpending,
-      projectedSpending: projectedMonthlySpending,
-      trendGrowth: trendGrowth,
-      totalSpending: avgDailySpending * daysLeft + futureMandatory,
-      completionDate: trendFinalBalance >= state.target ? state.end : null,
+      avgSpending: avgDailySpending * 30,
+      projectedSpending: projectedFutureSpending,
+      trendGrowth: (avgDailySpending - recommendedDailyTotal) / recommendedDailyTotal,
+      totalSpending: projectedFutureSpending + futureMandatory,
+      completionDate: willComplete ? state.end : null,
       runOutDate: runOutDate,
       daysWithData: totalDaysWithData,
-      percentOfRecommended: recommendedDaily > 0 ? (avgDailySpending / recommendedDaily) * 100 : 0,
+      percentOfRecommended: percentOfRecommended,
       currentBalance: currentBalance,
-      canSpend: currentBalance - state.target - futureMandatory,
+      canSpend: availableToSpend,
       daysLeft: daysLeft,
-      daysUntilMinimum: avgDailySpending > 0 ? Math.floor((currentBalance - state.target - futureMandatory) / avgDailySpending) : daysLeft
+      daysUntilMinimum: daysUntilRunOut,
+      recommendedDaily: recommendedDailyTotal,
+      totalAvgDaily: avgDailySpending + avgDailyMandatory,
+      avgDailyMandatory: avgDailyMandatory,
+      availableToSpend: availableToSpend,
+      projectedOverspend: willComplete ? 0 : Math.abs(trendFinalBalance - state.target)
     }
   };
 }
@@ -3462,6 +3434,7 @@ document.addEventListener('keydown', (e) => {
   </script>
 </body>
 </html>
+
 
 
 
