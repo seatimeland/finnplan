@@ -2169,6 +2169,10 @@ function renderTrendForecast(data) {
     `${data.daysWithData} ${daysText}` : 
     `${Math.floor(data.daysWithData / 30)} мес. ${data.daysWithData % 30} дн.`;
   
+  // ИСПРАВЛЕНИЕ: Правильный расчет доступного для трат
+  const availableForSpending = data.availableToSpend - data.avgDailyMandatory * data.daysLeft;
+  const recommendedDaily = availableForSpending > 0 && data.daysLeft > 0 ? availableForSpending / data.daysLeft : 0;
+  
   let html = `
     <div class="forecast-info-grid">
       <div class="forecast-card ${statusClass}">
@@ -2176,9 +2180,10 @@ function renderTrendForecast(data) {
         <div class="forecast-value">${statusIcon} ${statusText}</div>
         <div class="forecast-description">
           Текущий баланс: ${fmt0(data.currentBalance)}<br>
+          Доступно для трат: ${fmt0(data.availableToSpend)}<br>
           ${data.willComplete 
             ? `При темпе ${fmt0(data.avgDailySpending)}/день денег хватит до конца периода` 
-            : `При темпе ${fmt0(data.avgDailySpending)}/день денег хватит на ${data.daysUntilMinimum} дней из ${data.daysLeft}`}
+            : `При темпе ${fmt0(data.avgDailySpending)}/день денег хватит на ${data.daysUntilMinimum || 0} дней из ${data.daysLeft}`}
         </div>
       </div>
       
@@ -2192,15 +2197,13 @@ function renderTrendForecast(data) {
           </div>
           <div class="comparison-item">
             <div class="comparison-label">Можно тратить</div>
-            <div class="comparison-value">${fmt0(data.canSpend / data.daysLeft)}</div>
+            <div class="comparison-value">${fmt0(recommendedDaily)}</div>
           </div>
         </div>
-        ${data.percentOfRecommended !== 100 ? `
-          <div class="forecast-description">
-            Вы тратите ${Math.round(data.percentOfRecommended)}% от рекомендуемого<br>
-            Доступно для трат: ${fmt0(data.canSpend)}
-          </div>
-        ` : ''}
+        <div class="forecast-description">
+          Вы тратите ${Math.round(data.percentOfRecommended)}% от рекомендуемого<br>
+          Доступно для трат всего: ${fmt0(availableForSpending)}
+        </div>
       </div>
       
       <div class="forecast-card ${data.finalBalance < state.target ? 'warning' : 'highlight'}">
@@ -2218,9 +2221,9 @@ function renderTrendForecast(data) {
     </div>
   `;
   
-  if (!data.willComplete && data.runOutDate && data.daysUntilMinimum > 0) {
-    const runOutDateStr = data.runOutDate.toLocaleDateString('ru-RU');
-    const daysBeforeEnd = Math.floor((state.end - data.runOutDate) / (1000 * 60 * 60 * 24));
+  if (!data.willComplete && data.daysUntilMinimum !== null && data.daysUntilMinimum >= 0) {
+    const runOutDateStr = data.runOutDate ? data.runOutDate.toLocaleDateString('ru-RU') : 'неизвестно';
+    const daysBeforeEnd = data.runOutDate ? Math.floor((state.end - data.runOutDate) / (1000 * 60 * 60 * 24)) : 0;
     
     html += `
       <div class="forecast-alert">
@@ -2229,9 +2232,9 @@ function renderTrendForecast(data) {
           <strong>Критическое предупреждение!</strong><br>
           При текущем темпе трат (${fmt0(data.avgDailySpending)}/день) вы достигнете минимального баланса через 
           <strong>${data.daysUntilMinimum} ${data.daysUntilMinimum === 1 ? 'день' : data.daysUntilMinimum < 5 ? 'дня' : 'дней'}</strong> 
-          (примерно ${runOutDateStr}).<br>
-          Это на ${daysBeforeEnd} дней раньше окончания периода.<br>
-          Снизьте траты до ${fmt0(data.canSpend / data.daysLeft)}/день чтобы уложиться в план.
+          ${data.runOutDate ? `(примерно ${runOutDateStr})` : ''}.<br>
+          ${daysBeforeEnd > 0 ? `Это на ${daysBeforeEnd} дней раньше окончания периода.<br>` : ''}
+          Рекомендуемая трата: ${fmt0(recommendedDaily)}/день чтобы уложиться в план.
         </div>
       </div>
     `;
@@ -2242,7 +2245,8 @@ function renderTrendForecast(data) {
         <div class="forecast-alert-text">
           <strong>Хорошие новости!</strong><br>
           Ваш текущий темп трат (${fmt0(data.avgDailySpending)}/день) позволит успешно достичь цели.<br>
-          У вас есть ${fmt0(data.canSpend)} на оставшиеся ${data.daysLeft} дней.<br>
+          У вас есть ${fmt0(availableForSpending)} на оставшиеся ${data.daysLeft} дней.<br>
+          Рекомендуемая трата: ${fmt0(recommendedDaily)}/день<br>
           ${data.percentOfRecommended < 80 ? 'У вас даже есть запас для дополнительных трат!' : ''}
         </div>
       </div>
@@ -3455,6 +3459,7 @@ document.addEventListener('keydown', (e) => {
   </script>
 </body>
 </html>
+
 
 
 
