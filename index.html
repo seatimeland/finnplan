@@ -1977,8 +1977,8 @@ function calculateForecastDetails() {
   const remTotal = availableTotal - sumActual;
   
   // Считаем оставшиеся дни и обязательные платежи
-  const daysLeft = Math.floor((state.end - now) / (1000 * 60 * 60 * 24)) + 1;
-  const remainingMonths = state.months - lastMonthWithExpenses - 1;
+  const daysLeft = Math.max(0, Math.floor((state.end - now) / (1000 * 60 * 60 * 24)) + 1);
+  const remainingMonths = Math.max(0, state.months - lastMonthWithExpenses - 1);
   
   let futureMandatory = 0;
   for(let i = lastMonthWithExpenses + 1; i < state.months; i++){
@@ -1990,7 +1990,7 @@ function calculateForecastDetails() {
   const newDailyLimit = daysLeft > 0 ? (availableForSpending / daysLeft) : 0;
   const newMonthlyLimit = remainingMonths > 0 ? (remTotal / remainingMonths) : 0;
   
-  const uniformFinalBalance = currentBalance - (newDailyLimit * daysLeft) - futureMandatory;
+  const uniformFinalBalance = currentBalance - (Math.max(0, newDailyLimit) * daysLeft) - futureMandatory;
   
   // Расчет для прогноза по истории на основе ДНЕЙ
   const avgDailySpending = totalDaysWithData > 0 ? totalSpending / totalDaysWithData : 0;
@@ -1998,7 +1998,8 @@ function calculateForecastDetails() {
   
   // Определяем тренд
   let trendGrowth = 0;
-  const recommendedDaily = availableTotal / Math.floor((state.end - state.start) / (1000 * 60 * 60 * 24) + 1);
+  const totalPeriodDays = Math.max(1, Math.floor((state.end - state.start) / (1000 * 60 * 60 * 24) + 1));
+  const recommendedDaily = availableTotal / totalPeriodDays;
   if(recommendedDaily > 0 && totalDaysWithData >= 3) {
     trendGrowth = (avgDailySpending - recommendedDaily) / recommendedDaily;
   }
@@ -2035,7 +2036,7 @@ function calculateForecastDetails() {
       finalBalance: uniformFinalBalance,
       willComplete: uniformFinalBalance >= state.target,
       monthlySpending: newMonthlyLimit,
-      dailySpending: newDailyLimit,
+      dailySpending: newDailyLimit,  // Используем переменную которая уже определена
       totalSpending: remTotal,
       completionDate: state.end,
       runOutDate: uniformFinalBalance < state.target ? runOutDate : null,
@@ -3461,6 +3462,7 @@ document.addEventListener('keydown', (e) => {
   </script>
 </body>
 </html>
+
 
 
 
