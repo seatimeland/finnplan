@@ -1654,7 +1654,7 @@
 
   renderMandatoryPayments();
   renderMonthsList(monthlyLimit, newMonthlyLimit);
-  renderRecommendations(newMonthlyLimit);
+  renderRecommendations(monthlyLimit);
 
   // График
   const plannedBalances = makePlannedBalances(state.initial, state.target, state.months);
@@ -1698,20 +1698,101 @@
       });
     }
 
-    function renderRecommendations(monthlyLimit){
-      if(!Number.isFinite(monthlyLimit) || monthlyLimit <= 0){
-        $recommendationsBlock.classList.add('hidden');
-        return;
-      }
-      $recommendationsBlock.classList.remove('hidden');
-      const daily = monthlyLimit / 30;
-      const weekly = monthlyLimit / 4.3;
-      const tenDays = monthlyLimit / 3;
-      
-      $dailyLimit.textContent = fmtShort(daily) + ' ₽';
-      $weeklyLimit.textContent = fmtShort(weekly) + ' ₽';
-      $tenDaysLimit.textContent = fmtShort(tenDays) + ' ₽';
+    function renderRecommendations(baseMonthlyLimit) {
+  // Получаем актуальные данные о тратах
+  const monthlyActuals = state.monthlyTransactions.map(transactions => 
+    transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
+  );
+  
+  // Находим последний месяц с тратами
+  let lastMonthWithExpenses = -1;
+  let totalSpentWithoutMandatory = 0;
+  
+  for(let i = 0; i < monthlyActuals.length; i++){
+    if(monthlyActuals[i] > 0){
+      lastMonthWithExpenses = i;
+      totalSpentWithoutMandatory += monthlyActuals[i];
     }
+  }
+  
+  // Считаем обязательные платежи
+  const mandatoryTotal = calculateTotalMandatory();
+  let pastMandatory = 0;
+  let futureMandatory = 0;
+  
+  for(let i = 0; i <= lastMonthWithExpenses; i++){
+    pastMandatory += calculateMandatoryForMonth(i);
+  }
+  
+  for(let i = lastMonthWithExpenses + 1; i < state.months; i++){
+    futureMandatory += calculateMandatoryForMonth(i);
+  }
+  
+  // Рассчитываем актуальные параметры
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  // Текущий баланс после всех трат
+  const currentBalance = state.initial - totalSpentWithoutMandatory - pastMandatory;
+  
+  // Сколько доступно для трат (текущий баланс минус целевой минус будущие обязательные)
+  const availableForSpending = currentBalance - state.target - futureMandatory;
+  
+  // Сколько дней осталось до конца периода
+  const daysLeft = Math.max(0, Math.floor((state.end - today) / (1000 * 60 * 60 * 24)) + 1);
+  
+  // Сколько полных недель осталось
+  const weeksLeft = Math.floor(daysLeft / 7);
+  
+  // Сколько периодов по 10 дней осталось
+  const tenDayPeriodsLeft = Math.floor(daysLeft / 10);
+  
+  // Если нет доступных средств или дней, скрываем блок
+  if(!Number.isFinite(availableForSpending) || availableForSpending <= 0 || daysLeft <= 0){
+    $recommendationsBlock.classList.add('hidden');
+    return;
+  }
+  
+  $recommendationsBlock.classList.remove('hidden');
+  
+  // АКТУАЛЬНЫЕ рекомендации на основе текущей ситуации
+  const actualDailyLimit = availableForSpending / daysLeft;
+  const actualWeeklyLimit = weeksLeft > 0 ? (availableForSpending / daysLeft) * 7 : availableForSpending;
+  const actualTenDaysLimit = tenDayPeriodsLeft > 0 ? (availableForSpending / daysLeft) * 10 : availableForSpending;
+  
+  // Обновляем UI
+  $dailyLimit.textContent = fmtShort(actualDailyLimit) + ' ₽';
+  $weeklyLimit.textContent = fmtShort(actualWeeklyLimit) + ' ₽';
+  $tenDaysLimit.textContent = fmtShort(actualTenDaysLimit) + ' ₽';
+  
+  // Добавляем информацию о днях (опционально)
+  $dailyLimit.title = `На ${daysLeft} ${daysLeft === 1 ? 'день' : daysLeft < 5 ? 'дня' : 'дней'}`;
+  $weeklyLimit.title = `На ${weeksLeft} ${weeksLeft === 1 ? 'неделю' : weeksLeft < 5 ? 'недели' : 'недель'}`;
+  $tenDaysLimit.title = `На ${tenDayPeriodsLeft} ${tenDayPeriodsLeft === 1 ? 'период' : 'периодов'}`;
+  
+  // Меняем цвет заголовка в зависимости от ситуации
+  const recTitle = document.querySelector('.rec-title');
+  if(recTitle) {
+    // Если текущие траты выше рекомендуемых
+    const currentMonthIndex = (now.getFullYear() - state.start.getFullYear()) * 12 + 
+                              (now.getMonth() - state.start.getMonth());
+    
+    if(currentMonthIndex >= 0 && currentMonthIndex < monthlyActuals.length) {
+      const currentMonthSpent = monthlyActuals[currentMonthIndex] || 0;
+      const daysInCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const daysPassed = now.getDate();
+      const projectedMonthlySpending = (currentMonthSpent / daysPassed) * daysInCurrentMonth;
+      
+      if(projectedMonthlySpending > actualDailyLimit * 30) {
+        recTitle.innerHTML = '⚠️ Рекомендуемые лимиты (снизьте траты!)';
+        recTitle.style.color = '#ff8a8a';
+      } else {
+        recTitle.innerHTML = '💡 Рекомендуемые лимиты';
+        recTitle.style.color = 'var(--purple)';
+      }
+    }
+  }
+}
 
     function makePlannedBalances(initial, target, months){
       const arr = [];
@@ -3459,11 +3540,3 @@ document.addEventListener('keydown', (e) => {
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
